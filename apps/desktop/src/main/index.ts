@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
 import type { ResourceRoot, SkillInventory } from "@koyori/core";
 import { app, BrowserWindow, dialog, ipcMain, net, protocol, session, shell } from "electron";
+import { createUsageController } from "./usage-controller";
 
 protocol.registerSchemesAsPrivileged([
   { scheme: "koyori", privileges: { standard: true, secure: true, supportFetchAPI: true } },
@@ -17,6 +18,9 @@ let window: BrowserWindow | undefined;
 let roots: ResourceRoot[] = [];
 let activeScan: AbortController | undefined;
 let settingsPath: string;
+let changingRoots = false;
+let latestInventory: SkillInventory | null = null;
+let usage: Awaited<ReturnType<typeof createUsageController>> | undefined;
 
 function isRoot(value: unknown): value is ResourceRoot {
   if (!value || typeof value !== "object") return false;
@@ -61,11 +65,11 @@ function registerIpc() {
     trusted(event);
     return roots;
   });
-  let changingRoots = false;
   ipcMain.handle("roots:add", async (event, client: unknown) => {
     trusted(event);
     if (client !== "claude-code" && client !== "codex") throw new Error("Unsupported client");
-    if (!window || changingRoots || activeScan) throw new Error("An operation is in progress");
+    if (!window || changingRoots || activeScan || usage?.isBusy())
+      throw new Error("An operation is in progress");
     changingRoots = true;
     try {
       const result = await dialog.showOpenDialog(window, {
@@ -78,6 +82,7 @@ function registerIpc() {
       if (existing) return existing;
       const root: ResourceRoot = { id: randomUUID(), client, path, label: basename(path) || path };
       await persist([...roots, root]);
+      latestInventory = null;
       return root;
     } finally {
       changingRoots = false;
@@ -85,11 +90,12 @@ function registerIpc() {
   });
   ipcMain.handle("roots:remove", async (event, id: unknown) => {
     trusted(event);
-    if (typeof id !== "string" || changingRoots || activeScan)
+    if (typeof id !== "string" || changingRoots || activeScan || usage?.isBusy())
       throw new Error("Cannot remove this source now");
     changingRoots = true;
     try {
       await persist(roots.filter((root) => root.id !== id));
+      latestInventory = null;
       return roots;
     } finally {
       changingRoots = false;
@@ -97,11 +103,12 @@ function registerIpc() {
   });
   ipcMain.handle("skills:scan", async (event) => {
     trusted(event);
-    if (activeScan || changingRoots) throw new Error("An operation is in progress");
+    if (activeScan || changingRoots || usage?.isBusy())
+      throw new Error("An operation is in progress");
     const controller = new AbortController();
     activeScan = controller;
     try {
-      return await new Promise<SkillInventory>((resolveScan, reject) => {
+      const inventory = await new Promise<SkillInventory>((resolveScan, reject) => {
         const worker = new Worker(new URL("./scan-worker.js", import.meta.url), {
           workerData: roots,
         });
@@ -131,6 +138,10 @@ function registerIpc() {
           }
         });
       });
+      controller.signal.throwIfAborted();
+      await usage?.observe(inventory);
+      latestInventory = inventory;
+      return inventory;
     } finally {
       activeScan = undefined;
     }
@@ -165,6 +176,7 @@ function createWindow() {
   window.webContents.on("will-navigate", (event) => event.preventDefault());
   window.on("closed", () => {
     activeScan?.abort();
+    usage?.cancel();
     window = undefined;
   });
   if (devURL) void window.loadURL(devURL);
@@ -203,6 +215,23 @@ else {
           return;
         }
       }
+      try {
+        usage = await createUsageController({
+          path: join(app.getPath("userData"), "usage.json"),
+          getRoots: () => roots,
+          getInventory: () => latestInventory,
+          getWindow: () => window,
+          resourceBusy: () => Boolean(activeScan || changingRoots),
+          trusted,
+        });
+      } catch {
+        dialog.showErrorBox(
+          "无法读取使用账本",
+          "原文件仍保留在本机，请先备份应用数据目录并检查 usage.json。应用不会覆盖无法识别的统计记录。",
+        );
+        app.quit();
+        return;
+      }
       session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) =>
         callback(false),
       );
@@ -237,5 +266,8 @@ else {
   app.on("window-all-closed", () => {
     if (process.platform !== "darwin") app.quit();
   });
-  app.on("before-quit", () => activeScan?.abort());
+  app.on("before-quit", () => {
+    activeScan?.abort();
+    usage?.cancel();
+  });
 }

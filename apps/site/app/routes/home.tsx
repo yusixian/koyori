@@ -60,7 +60,7 @@ export default function HomePage() {
             <h2 id="now-title">只读 Skills 工作台已可运行</h2>
           </div>
           <p>
-            已支持选择目录、扫描、筛选和预览，桌面端与 CLI 已完成本地候选验证。调用统计、整理写入与个人 Agent 接入将继续迭代；当前尚无公开发行版。
+            已支持选择目录、扫描、筛选和预览，并加入 Claude Code 本机调用统计与复查偏好。整理写入与个人 Agent 接入继续迭代；当前尚无公开发行版。
           </p>
         </div>
       </section>

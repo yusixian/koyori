@@ -10,7 +10,7 @@ Koyori 是自用优先、从首版按开源方式建设的 AI Native 个人工�
 
 ## 当前状态
 
-**工程起点已可运行，尚无公开发行版。** 桌面工作台、只读 Skills 核心、CLI、独立文档站与本地候选包已建立。当前没有调用次数采集、整理写入、模型/Bot 连接或语音；验收证据与后续范围见 [实施状态](docs/implementation-status.md)。
+**工程起点已可运行，尚无公开发行版。** 桌面工作台、只读 Skills 核心、CLI、独立文档站与本地候选包已建立。现已加入 Claude Code 本机历史导入、可追溯调用统计和规则/复查偏好。整理写入、模型/Bot 连接和语音仍未实现；验收证据与后续范围见 [实施状态](docs/implementation-status.md)。
 
 ## 本地开发
 
@@ -34,7 +34,7 @@ pnpm dev
 | 指令与文档 | 扫描全局、项目及嵌套 AGENTS.md / CLAUDE.md，以及项目 Markdown |
 | Agent 与 CLI | 原生对话、自配模型或个人 Bot 连接、明确偏好与可审阅操作卡；CLI 共用核心查询/计划，ACP 后续评估 |
 
-自动化先做启动扫描、目录监听与变更收件箱。计划加入 Skills 调用统计、证据覆盖与闲置/到期复查提醒；首版扩大草案加入 Agent，基于用户选定的资源和摘要解释建议。推荐不会直接触发删除。
+自动化先做启动扫描、目录监听与变更收件箱。已加入 Claude Code Skills 调用统计、证据覆盖与规则/到期复查；首版扩大草案加入 Agent，基于用户选定的资源和摘要解释建议。推荐不会直接触发删除。
 
 ## MVP 路线
 
@@ -62,6 +62,7 @@ pnpm dev
 - [0.1 MVP 审阅草案](docs/design/mvp-0.1.0.md)：界面草图、首版边界、验收、发布和 Sol 编码分工。
 - [个人 Agent 与 Bot 接入](docs/design/personal-agent.md)：角色、记忆、语音候选与私有服务接入边界。
 - [Skills Manager 参考](docs/design/skills-manager-reference.md)：实现/兼容性调研、选择性复用与许可要求。
+- [使用统计指南](apps/site/content/docs/skill-usage.mdx) · [账本实现与限制](docs/design/usage-ledger.md)。
 - [Skills 使用统计与整理建议](docs/skill-lifecycle.md)：调用证据、闲置规则、到期提醒与 AI 推荐候选。
 - [架构与数据](docs/architecture.md)：核心进程、领域模型、SQLite、缓存与恢复。
 - [路线图与分发](docs/roadmap.md)：官网、反馈、更新、商业化预留。

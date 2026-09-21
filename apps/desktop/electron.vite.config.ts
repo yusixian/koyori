@@ -14,6 +14,7 @@ export default defineConfig({
         input: {
           index: resolve(import.meta.dirname, "src/main/index.ts"),
           "scan-worker": resolve(import.meta.dirname, "src/main/scan-worker.ts"),
+          "usage-worker": resolve(import.meta.dirname, "src/main/usage-worker.ts"),
         },
       },
     },

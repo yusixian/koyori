@@ -12,6 +12,12 @@ export const searchablePages = [
     keywords: "安装 macOS 下载 安装包 签名 公证",
   },
   {
+    title: "Skills 使用统计",
+    href: "/docs/skill-usage",
+    description: "连接 Claude Code 历史，核对调用证据、覆盖和整理偏好。",
+    keywords: "Skills Claude 调用 使用 次数 账本 证据 规则 保留 复查 CLI",
+  },
+  {
     title: "本地开发",
     href: "/docs/development",
     description: "Node、pnpm、文档站与桌面工程的开发起点。",
