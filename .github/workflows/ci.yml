@@ -28,8 +28,9 @@ jobs:
           docker build -f apps/site/Dockerfile -t koyori-docs-ci .
           container=$(docker run -d -p 127.0.0.1:8080:8080 koyori-docs-ci)
           trap 'docker rm -f "$container"' EXIT
-          curl --fail --retry 10 --retry-connrefused --retry-delay 1 http://127.0.0.1:8080/healthz
+          curl --fail --retry 10 --retry-all-errors --retry-delay 1 --max-time 5 --retry-max-time 30 http://127.0.0.1:8080/healthz
           curl --fail http://127.0.0.1:8080/docs/installation/ -o /dev/null
+          curl --fail http://127.0.0.1:8080/docs/skill-usage/ -o /dev/null
           curl --fail http://127.0.0.1:8080/download/ -o /dev/null
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/missing-page)" = 404
   desktop:
