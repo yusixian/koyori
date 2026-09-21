@@ -1,0 +1,35 @@
+.DS_Store
+node_modules/
+dist/
+release/
+coverage/
+.env
+.env.*
+!.env.example
+*.log
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+.cache/
+.local/
+
+# Local agent attachments and machine state; never public product assets
+.lody/
+out/
+build/
+.source/
+.react-router/
+playwright-report/
+test-results/
+artifacts/
+*.tsbuildinfo
+
+# Planning history and discarded artwork remain local/private.
+HANDOFF.md
+brand/itoha.png
+brand/itoha-chibi-v2.png
+brand/itoha-sprite-v2.png
+brand/itoha-sprite-v3.png
+brand/prompts-v2.json
+brand/prompt-sprite-v3.txt

@@ -1,0 +1,61 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm verify
+      - run: pnpm audit --audit-level=high
+      - name: Verify static docs container
+        run: |
+          docker build -f apps/site/Dockerfile -t koyori-docs-ci .
+          container=$(docker run -d -p 127.0.0.1:8080:8080 koyori-docs-ci)
+          trap 'docker rm -f "$container"' EXIT
+          curl --fail --retry 10 --retry-connrefused --retry-delay 1 http://127.0.0.1:8080/healthz
+          curl --fail http://127.0.0.1:8080/docs/installation/ -o /dev/null
+          curl --fail http://127.0.0.1:8080/download/ -o /dev/null
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/missing-page)" = 404
+  desktop:
+    needs: check
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @koyori/desktop build
+      - run: pnpm test:desktop
+      - run: pnpm package:mac
+      - name: Verify packaged application
+        run: pnpm test:desktop
+        env:
+          KOYORI_EXECUTABLE: ${{ github.workspace }}/artifacts/mac-arm64/Koyori.app/Contents/MacOS/Koyori
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: koyori-local-candidate
+          path: |
+            artifacts/*.dmg
+            artifacts/*.zip
+            artifacts/candidate.json
+          retention-days: 7

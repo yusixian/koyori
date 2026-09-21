@@ -1,0 +1,17 @@
+**
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!apps
+!apps/site
+!apps/site/**
+!brand
+!brand/logo.png
+!docs
+!docs/releases
+!docs/releases/**
+**/node_modules
+**/build
+**/.source
+**/.react-router
+apps/site/app/generated

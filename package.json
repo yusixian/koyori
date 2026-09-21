@@ -1,0 +1,36 @@
+{
+  "name": "koyori",
+  "version": "0.1.0-alpha.0",
+  "private": true,
+  "description": "A personal workbench for Skills and agents",
+  "license": "MIT",
+  "packageManager": "pnpm@10.28.2",
+  "engines": {
+    "node": "22.x"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @koyori/desktop dev",
+    "dev:site": "pnpm --filter @koyori/site dev",
+    "koyori": "tsx apps/cli/src/index.ts",
+    "lint": "biome check apps/desktop/src packages/core/src apps/cli/src scripts acceptance",
+    "format": "biome format --write apps/desktop/src packages/core/src apps/cli/src scripts acceptance",
+    "typecheck": "tsc --noEmit && pnpm --filter @koyori/site typecheck",
+    "test": "vitest run",
+    "build": "pnpm --filter @koyori/desktop build && pnpm --filter @koyori/site build",
+    "package:mac": "pnpm --filter @koyori/desktop package:mac",
+    "check:public": "node scripts/check-public.mjs",
+    "test:desktop": "node scripts/prepare-desktop.mjs && playwright test -c acceptance/playwright.config.ts",
+    "verify": "pnpm check:public && pnpm lint && pnpm typecheck && pnpm test && pnpm build"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.14",
+    "@playwright/test": "1.63.0",
+    "@types/node": "22.19.15",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "tsx": "4.23.1",
+    "typescript": "5.9.3",
+    "vitest": "4.1.11",
+    "vite": "7.3.6"
+  }
+}

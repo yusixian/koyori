@@ -1,0 +1,3 @@
+.react-router/
+build/
+app/generated/release.ts
