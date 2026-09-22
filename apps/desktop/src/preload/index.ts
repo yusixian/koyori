@@ -31,6 +31,7 @@ const bridge: KoyoriBridge = {
   scan: () => ipcRenderer.invoke("skills:scan"),
   cancelScan: () => ipcRenderer.invoke("skills:cancel"),
   getUsage: (days) => ipcRenderer.invoke("usage:get", days),
+  prepareSkillDiscussion: (id, days) => ipcRenderer.invoke("usage:discussion", id, days),
   addHistorySource: (rootId) => ipcRenderer.invoke("usage:source:add", rootId),
   disconnectHistorySource: (id) => ipcRenderer.invoke("usage:source:disconnect", id),
   importUsage: (days) => ipcRenderer.invoke("usage:import", days),

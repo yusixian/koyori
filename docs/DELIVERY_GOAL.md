@@ -1,6 +1,6 @@
 # Skills 与个人 Agent 交付
 
-> 2026-09-22；Skills 交付切片已完成独立 review、合并及文档站部署，PR #1/#2 已合并；正式域名 DNS/HTTPS 已实测。自配模型 Agent 切片已完成 review、CI 和 [PR #3](https://github.com/yusixian/koyori/pull/3) 合并；新版文档部署待完成。
+> 2026-09-22；Skills 交付切片已完成独立 review、合并及文档站部署，PR #1/#2 已合并；正式域名 DNS/HTTPS 已实测。自配模型 Agent 切片已完成 review、CI 和 [PR #3](https://github.com/yusixian/koyori/pull/3) 合并；文字 Agent 指南已部署；本轮单 Skill 讨论指南随新切片交付。
 
 ## 目标与授权
 
@@ -25,7 +25,7 @@
 3. **M3 Git 备份**：连接、快照上传/下载、远端校验、自动备份与重试、断开保留数据。使用合成本地 bare Git 远端做故障/冲突验证；真实账号上传只在单独明确选择后进行。
 4. **交付**：公开文档与未发布说明；有界独立审查与修复、定向本地检查、真实桌面验收、精确 SHA 的 CI；review 后合并。Dokploy 部署文档站并验证容器与公网页面、搜索、深链和移动视图。
 
-自配模型的本地文字 Agent 已作为后续开发版切片实现；真实 Electron、CI 与合并已完成，新版文档部署待完成。Bot 桌面通道/API、工具操作卡和语音仍属后续范围。本轮不改变本文件原有 Skills 授权，也不授权改造私有 Bot；使用证据与受控计划继续为后续能力保留调用入口。
+自配模型的本地文字 Agent 已作为后续开发版切片实现；真实 Electron、CI 与合并已完成，文字 Agent 指南已部署；本轮单 Skill 讨论指南随新切片交付。Bot 桌面通道/API、工具操作卡和语音仍属后续范围。本轮不改变本文件原有 Skills 授权，也不授权改造私有 Bot；使用证据与受控计划继续为后续能力保留调用入口。
 
 ## 当前进展
 
@@ -37,13 +37,23 @@
 - 文档站桌面与 390px 移动导航、搜索、新指南已在本地实测；Dokploy 独立应用、Dockerfile 与正式 HTTPS 域名已配置并实测。
 - [CI 35696269229](https://github.com/yusixian/koyori/actions/runs/35696269229) 属于 Skills 基线，在 `ebc0d529d10f3c5c51e6f9813f48bcbe934baf37` 全部通过：116 项测试、Linux 文档容器、macOS 打包与打包后两项 Electron 验收。
 - [PR #1](https://github.com/yusixian/koyori/pull/1) 与 [PR #2](https://github.com/yusixian/koyori/pull/2) 已合并，本轮开始时 `origin/main` 为 `1d9f7ed8965d6918170785d7c12c595c8460db40`；Skills 功能合并 commit 为 `1ed91aff27be4e8e1fa4220c670853773a19cbba`。
-- 本轮 Agent 的 Provider/controller 定向 22 项（11+11）与 TypeScript 检查通过；真实 Electron 验收通过，覆盖流式/取消/错误、重启保留、连接隔离、页面草稿与无密钥流程不访问钥匙串；新版文档部署待完成。
-- Dokploy 当前仍部署 `1ed91aff27be4e8e1fa4220c670853773a19cbba`。正式域名 [https://koyori.cosine.ren/](https://koyori.cosine.ren/) 的主页返回 200，`/healthz` 返回 `ok`，Skills 指南、`/download`、`/changelog` 和 `/search` 返回 200，不存在路径返回 404；这些证据不代表本轮 Agent 已上线。
+- 本轮 Agent 的 Provider/controller 定向 22 项（11+11）与 TypeScript 检查通过；真实 Electron 验收通过，覆盖流式/取消/错误、重启保留、连接隔离、页面草稿与无密钥流程不访问钥匙串；文字 Agent 指南已部署；本轮单 Skill 讨论指南随新切片交付。
+- Dokploy 本轮开始时部署 `1ed91aff27be4e8e1fa4220c670853773a19cbba`。正式域名 [https://koyori.cosine.ren/](https://koyori.cosine.ren/) 的主页返回 200，`/healthz` 返回 `ok`，Skills 指南、`/download`、`/changelog` 和 `/search` 返回 200，不存在路径返回 404；这些证据不代表本轮 Agent 已上线。
 - 正式域名的公开 HTTP 路由检查已补齐；本轮 Agent 新版部署后仍需重新进行桌面首页、390px 移动导航、关键词搜索和指南跳转验收。
 - 剩余外部条件：本轮新版文档部署、Git 远端真实账号往返、安装包签名/公证、公开 Release 和跨公开版本升级。没有使用真实个人 Skills 进行写入或上传，也没有执行公开桌面发版。
 - [CI 35703564665](https://github.com/yusixian/koyori/actions/runs/35703564665) 在 `96c02611765ce7aa74f5db9bbeab5e6f196c340a` 全部通过，包含 Linux 检查/文档容器、macOS 构建和打包前、打包后各三项真实 Electron 验收。[PR #3](https://github.com/yusixian/koyori/pull/3) 已合并为 `42e92844168eb3ba487d84dee7b3c9f9fbc67e57`，与验证提交的 Git tree 一致。
 - 钥匙串弹窗已修复：只在用户主动保存或使用密钥时访问系统安全存储；本机无密钥启动、重启和对话验收通过。浏览器控制连接中断后，未触发新版 Dokploy 部署；恢复已登录控制台后继续，不需重置钥匙串。
 
 ## 后续恢复入口
+
+### 当前推进：Skills 与 Agent 的按需讨论
+
+本轮连接已有 Skills 账本与文字 Agent：从单个资源打开使用证据摘要，在本机完整预览，再明确加入可编辑草稿，最后由用户点击发送。摘要只使用选定资源的名称、客户端、观察窗口、计数与覆盖状态、保留/复查偏好和规则类型；不附加 Skill 正文、描述、路径、原始会话或其他资源。摘要保留生成时间，后续变更不会偷偷替换草稿。采集不足、归属不明和暂停采集仍明确显示，零观察不推导无用。
+
+复用现有文字发送与连接隔离，不新增工具执行、后台模型调用或持久化格式。验收包括完整预览、没有自动请求、已有草稿保留、取消摘要、未知统计、网络实际 payload 白名单、窗口缩放与重启后的会话保留。实际用户数据和真实付费服务不参与测试。
+
+2026-09-22 再核对：基线 `main` 为 `e128a9392c22701ccb73817287a8733d11d295db`，CI 35705329059 全部通过。通过 Chrome 原生窗口触发并核验 Dokploy 部署同一提交（Done，41 秒）；`/healthz` 返回 `ok`，`/docs/agent/` 已返回成功并包含钥匙串按需访问指南。本轮讨论指南将在合并后单独部署和检查。
+
+当前分支 `feat/skill-agent-discussion`：core/IPC 定向 19 项、TypeScript、相关 Biome、桌面构建和文档静态构建通过；独立数据边界 review 未发现 P1/P2。真实 Electron 两项用例的界面、实际请求内容及新讨论重启保留断言已通过，但两项均在 `app.close()` 等待退出时超时；正在定位退出时序，不能将本轮 Electron 验收记为通过。尚未提交或创建本轮 PR。
 
 先核对工作区与子代理状态，再读取本文。验证和远端状态随阶段完成更新，不把历史 CI 或本地测试替代当前候选证据。

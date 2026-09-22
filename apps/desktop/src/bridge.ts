@@ -4,6 +4,7 @@ import type {
   HistorySource,
   OperationRecord,
   ResourceRoot,
+  SkillDiscussionDraft,
   SkillInventory,
   UsageRules,
   UsageView,
@@ -105,6 +106,7 @@ export interface KoyoriBridge {
   cancelScan(): Promise<void>;
   openProject(): Promise<void>;
   getUsage(windowDays?: 30 | 90): Promise<UsageView>;
+  prepareSkillDiscussion(skillId: string, windowDays?: 30 | 90): Promise<SkillDiscussionDraft>;
   addHistorySource(rootId: string): Promise<HistorySource | null>;
   disconnectHistorySource(id: string): Promise<void>;
   importUsage(windowDays?: 30 | 90): Promise<UsageView>;

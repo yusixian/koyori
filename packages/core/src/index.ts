@@ -6,6 +6,8 @@ export { importUsage, importUsageIncremental } from "./import-usage.ts";
 export { createManagementStore } from "./managed-files.ts";
 export type * from "./management-types.ts";
 export { scanSkills } from "./scan-skills.ts";
+export type { SkillDiscussionDraft } from "./skill-discussion.ts";
+export { buildSkillDiscussion } from "./skill-discussion.ts";
 export type {
   ClientId,
   ResourceRoot,

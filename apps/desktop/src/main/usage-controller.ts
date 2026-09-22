@@ -11,6 +11,7 @@ import type {
   UsageView,
 } from "@koyori/core";
 import {
+  buildSkillDiscussion,
   buildUsageReport,
   createUsageImportCache,
   createUsageState,
@@ -102,6 +103,14 @@ export async function createUsageController(deps: Dependencies) {
       ),
     };
   }
+  ipcMain.handle("usage:discussion", (event, skillId: unknown, days: unknown) => {
+    deps.trusted(event);
+    if (typeof skillId !== "string" || skillId.length > 512) throw new Error("Invalid resource");
+    const skill = deps.getInventory()?.skills.find((item) => item.id === skillId);
+    if (!skill || !deps.getRoots().some((root) => root.id === skill.rootId))
+      throw new Error("Resource is no longer connected");
+    return buildSkillDiscussion(skill, view(windowDays(days)));
+  });
   async function persist(next: UsageState) {
     await writeUsageState(deps.path, next);
     state = next;

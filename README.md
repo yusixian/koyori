@@ -14,6 +14,8 @@ Koyori 是自用优先、从首版按开源方式建设的 AI Native 个人工�
 
 个人 Agent 支持 OpenAI-compatible 模型连接、本地会话、流式回复与取消，不自动发送 Skills 或日志。Bot 接入、工具操作卡和语音仍待实现。[文档站](https://koyori.cosine.ren/)已通过正式 HTTPS 检查；验证记录与剩余范围见[实施状态](docs/implementation-status.md)。
 
+选中一项 Skill 后，可将使用证据与覆盖缺口生成摘要，预览并加入 Agent 草稿，再手动发送讨论。摘要不自动携带 Skill 正文、描述、路径或原始会话，已有草稿会保留。
+
 ## 本地开发
 
 使用 `.node-version` 指定的 Node.js 与 `package.json` 指定的 pnpm：

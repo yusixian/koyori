@@ -1,3 +1,4 @@
+import type { SkillDiscussionDraft } from "@koyori/core";
 import {
   Bot,
   CircleStop,
@@ -25,6 +26,12 @@ const emptyConnection: AgentConnectionInput = {
   model: "",
   apiKey: "",
 };
+const agentMessageCharacterLimit = 65_536;
+
+interface AgentPanelProps {
+  pendingDiscussion: SkillDiscussionDraft | null;
+  onDismissDiscussion: () => void;
+}
 
 function formatTime(value: string) {
   const date = new Date(value);
@@ -34,6 +41,15 @@ function formatTime(value: string) {
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+  }).format(date);
+}
+
+function formatSnapshotTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "时间未知";
+  return new Intl.DateTimeFormat("zh-CN", {
+    dateStyle: "medium",
+    timeStyle: "short",
   }).format(date);
 }
 
@@ -58,7 +74,7 @@ function latestUserText(messages: AgentMessage[], assistantId: string) {
   return "";
 }
 
-export function AgentPanel() {
+export function AgentPanel({ pendingDiscussion, onDismissDiscussion }: AgentPanelProps) {
   const [view, setView] = useState<AgentView | null>(null);
   const [busy, setBusy] = useState<BusyAction>(null);
   const [error, setError] = useState("");
@@ -69,6 +85,7 @@ export function AgentPanel() {
   const [renameDraft, setRenameDraft] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [loadAttempt, setLoadAttempt] = useState(0);
+  const [discussionError, setDiscussionError] = useState("");
   const requestRef = useRef(0);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
@@ -123,6 +140,30 @@ export function AgentPanel() {
   const canSend = Boolean(
     selectedSession && sessionIsCurrent && !view?.runningSessionId && draft.trim() && busy === null,
   );
+  const discussionDraft = pendingDiscussion
+    ? draft.length > 0
+      ? `${draft}\n\n${pendingDiscussion.text}`
+      : pendingDiscussion.text
+    : "";
+  const discussionTooLong = discussionDraft.length > agentMessageCharacterLimit;
+  const canAppendDiscussion = Boolean(
+    pendingDiscussion &&
+      selectedSession &&
+      sessionIsCurrent &&
+      !view?.runningSessionId &&
+      busy === null,
+  );
+
+  let discussionBlockedReason = "";
+  if (pendingDiscussion) {
+    if (!view?.connection) discussionBlockedReason = "先保存连接；摘要会继续留在这里。";
+    else if (!selectedSession) discussionBlockedReason = "先为当前连接新建一段会话。";
+    else if (!sessionIsCurrent)
+      discussionBlockedReason = "当前是历史只读会话，请新建或切回当前连接的会话。";
+    else if (view.runningSessionId)
+      discussionBlockedReason = "当前回复结束或停止后，才能把摘要加入草稿。";
+    else if (busy !== null) discussionBlockedReason = "Agent 正在处理其他操作，请稍后加入。";
+  }
 
   function accept(next: AgentView) {
     requestRef.current += 1;
@@ -290,6 +331,25 @@ export function AgentPanel() {
     requestAnimationFrame(() => composerRef.current?.focus());
   }
 
+  function appendDiscussion() {
+    if (!pendingDiscussion || !canAppendDiscussion) return;
+    if (discussionTooLong) {
+      setDiscussionError(
+        `加入后将超过 ${agentMessageCharacterLimit.toLocaleString("zh-CN")} 个字符。请先缩短当前草稿，或丢弃这份摘要。`,
+      );
+      return;
+    }
+    setDraft(discussionDraft);
+    setDiscussionError("");
+    onDismissDiscussion();
+    requestAnimationFrame(() => composerRef.current?.focus());
+  }
+
+  function dismissDiscussion() {
+    setDiscussionError("");
+    onDismissDiscussion();
+  }
+
   if (!view) {
     return (
       <section className="agent-panel agent-loading" aria-busy={!error}>
@@ -320,7 +380,7 @@ export function AgentPanel() {
         <div>
           <p className="agent-kicker">PERSONAL AGENT</p>
           <h1 id="agent-title">一处安静的文字对话。</h1>
-          <p>消息只会在你按下发送后，交给当前显示的服务与模型。</p>
+          <p>消息只会在你按下发送后交给当前服务；仅主动加入的摘要会随文字发送。</p>
         </div>
         <div className="agent-heading-actions">
           {view.runningSessionId && (
@@ -492,6 +552,64 @@ export function AgentPanel() {
           </>
         )}
       </section>
+
+      {pendingDiscussion && (
+        <section className="agent-discussion-preview" aria-label="Skill 讨论摘要">
+          <div className="agent-discussion-heading">
+            <div>
+              <p className="agent-kicker">LOCAL PREVIEW</p>
+              <h2>{pendingDiscussion.skillName} · 使用证据摘要</h2>
+            </div>
+            <span>近 {pendingDiscussion.windowDays} 天</span>
+          </div>
+          <p className="agent-discussion-boundary">
+            这是本机预览，尚未发送。摘要只含 Skill
+            名称、使用统计、保留或复查偏好与整理规则，不附加全文、路径或会话原文；名称本身可能私密，加入后仍可编辑。
+          </p>
+          <dl className="agent-discussion-meta">
+            <div>
+              <dt>快照时间</dt>
+              <dd>{formatSnapshotTime(pendingDiscussion.generatedAt)}</dd>
+            </div>
+            <div>
+              <dt>数据去向</dt>
+              <dd>
+                {view.connection
+                  ? `${view.connection.name} · ${view.connection.baseUrl} · ${view.connection.model}`
+                  : "尚未配置连接；当前不会发送"}
+              </dd>
+            </div>
+          </dl>
+          <details open className="agent-discussion-details">
+            <summary>查看完整待发送摘要</summary>
+            <pre>{pendingDiscussion.text}</pre>
+          </details>
+          {(discussionBlockedReason || discussionTooLong || discussionError) && (
+            <p className="agent-discussion-warning" role="status">
+              {discussionError ||
+                discussionBlockedReason ||
+                `当前草稿加入摘要后将超过 ${agentMessageCharacterLimit.toLocaleString("zh-CN")} 个字符。`}
+            </p>
+          )}
+          <div className="agent-discussion-actions">
+            <button
+              type="button"
+              className="agent-button agent-primary-button"
+              disabled={!canAppendDiscussion}
+              onClick={appendDiscussion}
+            >
+              加入当前草稿
+            </button>
+            <button
+              type="button"
+              className="agent-text-button agent-danger-text"
+              onClick={dismissDiscussion}
+            >
+              丢弃摘要
+            </button>
+          </div>
+        </section>
+      )}
 
       <div className="agent-workspace">
         <aside className="agent-sessions" aria-label="Agent 会话">
@@ -672,7 +790,9 @@ export function AgentPanel() {
                 {selectedSession.messages.length === 0 ? (
                   <div className="agent-message-empty">
                     <Sparkles size={19} />
-                    <p>写下第一条消息。只有手动发送的文字会离开本机。</p>
+                    <p>
+                      写下第一条消息。仅主动加入的摘要会随文字发送，其余 Skill 内容不会自动附带。
+                    </p>
                   </div>
                 ) : (
                   selectedSession.messages.map((message) => (
@@ -725,7 +845,10 @@ export function AgentPanel() {
                     value={draft}
                     disabled={!sessionIsCurrent || Boolean(view.runningSessionId) || busy !== null}
                     placeholder={sessionIsCurrent ? "写一条消息…" : "历史会话为只读"}
-                    onChange={(event) => setDraft(event.target.value)}
+                    onChange={(event) => {
+                      setDraft(event.target.value);
+                      if (discussionError) setDiscussionError("");
+                    }}
                     onKeyDown={(event) => {
                       if (
                         event.key === "Enter" &&

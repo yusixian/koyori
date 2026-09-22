@@ -2,6 +2,7 @@ import type {
   ClientId,
   DiscoveryIssue,
   ResourceRoot,
+  SkillDiscussionDraft,
   SkillInventory,
   SkillRecord,
   SkillUsage,
@@ -100,6 +101,8 @@ function App() {
   const [showSources, setShowSources] = useState(false);
   const [usage, setUsage] = useState<UsageView | null>(null);
   const [skillView, setSkillView] = useState<"inventory" | "usage" | "manage">("inventory");
+  const [pendingDiscussion, setPendingDiscussion] = useState<SkillDiscussionDraft | null>(null);
+  const [discussionBusyId, setDiscussionBusyId] = useState<string | null>(null);
   const workspaceRequestRef = useRef(0);
   useEffect(() => {
     let disposed = false;
@@ -153,6 +156,21 @@ function App() {
     [current, filter, query],
   );
   const detail = skills.find((item) => item.id === selected);
+  async function prepareDiscussion(skillId: string) {
+    if (example || pendingDiscussion || discussionBusyId) return;
+    setDiscussionBusyId(skillId);
+    setError("");
+    try {
+      const windowDays = usage?.report.windowDays === 30 ? 30 : 90;
+      const next = await window.koyori.prepareSkillDiscussion(skillId, windowDays);
+      setPendingDiscussion(next);
+      setPage("agent");
+    } catch {
+      setError("使用证据摘要没有准备好。原有资源和会话保持不变，可以稍后重试。");
+    } finally {
+      setDiscussionBusyId(null);
+    }
+  }
   async function scan() {
     setBusy(true);
     setError("");
@@ -293,7 +311,10 @@ function App() {
           </span>
         </header>
         <div hidden={page !== "agent"}>
-          <AgentPanel />
+          <AgentPanel
+            pendingDiscussion={pendingDiscussion}
+            onDismissDiscussion={() => setPendingDiscussion(null)}
+          />
         </div>
         {page === "skills" ? (
           <>
@@ -653,6 +674,16 @@ function App() {
                             setSkillView("manage");
                           }
                     }
+                    discuss={
+                      example
+                        ? undefined
+                        : () => {
+                            void prepareDiscussion(detail.id);
+                          }
+                    }
+                    discussionBusy={discussionBusyId !== null}
+                    pendingDiscussionName={pendingDiscussion?.skillName}
+                    goToAgent={() => setPage("agent")}
                   />
                 )}
               </div>
@@ -721,11 +752,19 @@ function Detail({
   usage,
   close,
   manage,
+  discuss,
+  discussionBusy,
+  pendingDiscussionName,
+  goToAgent,
 }: {
   skill: SkillRecord;
   usage?: SkillUsage;
   close: () => void;
   manage?: () => void;
+  discuss?: () => void;
+  discussionBusy: boolean;
+  pendingDiscussionName?: string;
+  goToAgent: () => void;
 }) {
   return (
     <aside className="detail" aria-label="Skill 详情">
@@ -737,10 +776,33 @@ function Detail({
       </div>
       <h2>{skill.name}</h2>
       <p>{skill.description || "未提供描述"}</p>
-      {manage && (
-        <button className="button primary" type="button" onClick={manage}>
-          同步或备份这份 Skill <ChevronRight size={15} />
-        </button>
+      <div className="detail-actions">
+        {discuss && (
+          <button
+            className="button primary"
+            type="button"
+            disabled={discussionBusy || Boolean(pendingDiscussionName)}
+            onClick={discuss}
+          >
+            <MessageCircle size={15} />
+            {discussionBusy ? "正在准备摘要…" : "和 Koyori 讨论"}
+          </button>
+        )}
+        {pendingDiscussionName && (
+          <button className="text-button" type="button" onClick={goToAgent}>
+            前往 Agent 处理摘要 <ChevronRight size={14} />
+          </button>
+        )}
+        {manage && (
+          <button className="button" type="button" onClick={manage}>
+            同步或备份这份 Skill <ChevronRight size={15} />
+          </button>
+        )}
+      </div>
+      {pendingDiscussionName && (
+        <p className="detail-pending-note">
+          “{pendingDiscussionName}”的摘要正在 Agent 中等待处理，不会被新的摘要覆盖。
+        </p>
       )}
       <dl>
         <dt>客户端</dt>
