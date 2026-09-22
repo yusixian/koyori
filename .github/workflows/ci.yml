@@ -34,6 +34,13 @@ jobs:
           curl --fail http://127.0.0.1:8080/docs/skills-management/ -o /dev/null
           curl --fail http://127.0.0.1:8080/docs/agent/ -o /dev/null
           curl --fail http://127.0.0.1:8080/download/ -o /dev/null
+          for route in /docs/agent /docs/skill-usage /search /download; do
+            redirect=$(curl --fail --silent --show-error --max-time 5 -D - -o /dev/null \
+              -H 'Host: docs.example' -H 'X-Forwarded-Proto: https' \
+              "http://127.0.0.1:8080$route" | awk 'tolower($1) == "location:" { sub("\r$", "", $2); print $2 }')
+            test "$redirect" = "$route/"
+            curl --fail --location --max-redirs 2 --max-time 5 "http://127.0.0.1:8080$route" -o /dev/null
+          done
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/missing-page)" = 404
   desktop:
     needs: check
@@ -61,4 +68,13 @@ jobs:
             artifacts/*.dmg
             artifacts/*.zip
             artifacts/candidate.json
+          retention-days: 7
+      - name: Preserve failed desktop acceptance evidence
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: koyori-desktop-failure
+          path: |
+            test-results/
+            artifacts/*.png
           retention-days: 7

@@ -1,5 +1,6 @@
 import type {
   ResourceRoot,
+  SkillDiscussionDraft,
   SkillInventory,
   UsageEvent,
   UsageImport,
@@ -213,6 +214,54 @@ afterEach(() => {
 });
 
 describe("usage controller boundaries", () => {
+  it("prepares a local discussion snapshot without collecting or changing records", async () => {
+    mocks.readUsageState.mockResolvedValue(state({ events: [usageEvent("discussion-event")] }));
+    const trusted = vi.fn();
+    await createUsageController(dependencies(() => [root], trusted));
+
+    const draft = ipc("usage:discussion")(event(), "skill-writer", 30) as SkillDiscussionDraft;
+    expect(draft).toMatchObject({ skillName: "writer", windowDays: 30, generatedAt: now });
+    expect(draft.text).toContain("writer");
+    expect(draft.text).not.toContain("/fixtures/");
+    expect(draft.text).not.toContain("discussion-event");
+    expect(draft.text).not.toContain("# Writer");
+    expect(trusted).toHaveBeenCalledOnce();
+    expect(mocks.workers).toHaveLength(0);
+    expect(mocks.writeUsageState).not.toHaveBeenCalled();
+    expect(mocks.writeCollectionState).not.toHaveBeenCalled();
+  });
+
+  it("refuses unknown or disconnected discussion resources and unsupported windows", async () => {
+    let roots = [root];
+    mocks.readUsageState.mockResolvedValue(state());
+    await createUsageController(dependencies(() => roots));
+
+    expect(() => ipc("usage:discussion")(event(), "missing", 30)).toThrow(
+      "Resource is no longer connected",
+    );
+    expect(() => ipc("usage:discussion")(event(), {}, 30)).toThrow("Invalid resource");
+    expect(() => ipc("usage:discussion")(event(), "skill-writer", 7)).toThrow(
+      "Unsupported observation window",
+    );
+    roots = [];
+    expect(() => ipc("usage:discussion")(event(), "skill-writer", 30)).toThrow(
+      "Resource is no longer connected",
+    );
+    expect(mocks.workers).toHaveLength(0);
+  });
+
+  it("checks the invoking window before preparing any discussion", async () => {
+    const trusted = vi.fn(() => {
+      throw new Error("Unauthorized window");
+    });
+    mocks.readUsageState.mockResolvedValue(state());
+    await createUsageController(dependencies(() => [root], trusted));
+    expect(() => ipc("usage:discussion")(event(), "skill-writer", 30)).toThrow(
+      "Unauthorized window",
+    );
+    expect(trusted).toHaveBeenCalledOnce();
+  });
+
   it("masks a revoked resource root immediately while retaining collected events", async () => {
     let roots = [root];
     mocks.readUsageState.mockResolvedValue(

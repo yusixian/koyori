@@ -2,7 +2,7 @@
 
 > 2026-09-22；文档、版本和分发已前移至工程起步，具体功能按原型收敛，不是交付时间承诺。
 
-当前按 [0.1 MVP 草案](design/mvp-0.1.0.md) 推进 Skills 管理与个人 Agent 两条主线。工程基线、自动发现、Claude Code 使用证据、本地同步/快照和 Git 备份已进入开发版并通过隔离验收；文档服务已部署，正式域名 DNS/HTTPS 已实测。首个自配模型文字 Agent 已进入开发版，已通过合成服务真实 Electron、完整 CI 与独立 review 并合并；新版文档部署继续单独记录；Bot 接入和公开分发仍属后续范围。下列阶段保留长期能力演进，不代表时间承诺。
+当前按 [0.1 MVP 草案](design/mvp-0.1.0.md) 推进 Skills 管理与个人 Agent 两条主线。工程基线、自动发现、Claude Code 使用证据、本地同步/快照和 Git 备份已进入开发版并通过隔离验收；文档服务已部署，正式域名 DNS/HTTPS 已实测。首个自配模型文字 Agent 已进入开发版，已通过合成服务真实 Electron、完整 CI 与独立 review 并合并；单 Skill 按需摘要讨论已实现，本轮 review、CI 和新版文档部署记录见 [PR #5](https://github.com/yusixian/koyori/pull/5)；Bot 接入和公开分发仍属后续范围。下列阶段保留长期能力演进，不代表时间承诺。
 
 ## 长期能力演进（不替代首版里程碑）
 
@@ -10,7 +10,7 @@
 1. 资源基础：Electron、基础 CLI、Skills 自动发现、预览搜索、来源与作用域；Claude Code 使用证据先行，Codex 在没有可靠适配器时保持未知。
 2. 自用闭环：完整 Skill 目录同步、本地快照、恢复、便携导入导出与 Git 备份；配套闲置/到期复查、整理建议和保留偏好。MCP、commands 与缓存管理按真实自用需求后续加入。
 3. 持续 preview：复用起步阶段的安装包、文档与发布链，完善反馈、社区及更新入口。自动更新在签名与升级路径验证后开放，不把开发模式启动当作安装包验收。
-4. AI 增强：首个自配模型文字 Agent 已进入开发版；后续推进私有 Bot 桌面通道/API、工具操作卡、语音与 Skills 建议，再评估 ACP、更多协议、提示词优化和更丰富的工作台工具。
+4. AI 增强：首个自配模型文字 Agent 已进入开发版；单 Skill 证据讨论已实现，后续先推进本地工具操作卡，再按独立授权接入私有 Bot 桌面通道/API 和语音，再评估 ACP、更多协议、提示词优化和更丰富的工作台工具。
 5. 效果与自动规则：相同任务试验、任务预设、经授权的受限自动应用。
 6. 商业验证：个人专业能力、可选云服务、团队共享；根据真实需求选择，不提前建设。
 
@@ -28,7 +28,7 @@
 
 ## 官网和分发
 
-同一个 monorepo，apps/site 使用 React Router 与 Fumadocs 独立构建，已部署到 Dokploy，承载官网、/docs、/download、/changelog 及反馈/社区入口。正式域名 `https://koyori.cosine.ren/` 的 DNS/HTTPS、健康、深链和不存在路径检查已通过；当前线上仍部署旧 commit，部署 commit 与验证分层见 [实施状态](implementation-status.md)；工程约束见 [发布与开源基线](design/release-foundation.md)。
+同一个 monorepo，apps/site 使用 React Router 与 Fumadocs 独立构建，已部署到 Dokploy，承载官网、/docs、/download、/changelog 及反馈/社区入口。正式域名 `https://koyori.cosine.ren/` 的 DNS/HTTPS、健康、深链和不存在路径检查已通过；部署 commit 与验证分层见 [实施状态](implementation-status.md)；工程约束见 [发布与开源基线](design/release-foundation.md)。
 
 产品域名同时预留 `/api/v1` 服务入口。后端按[后端与统一域名](design/backend.md)参考职责分层、公共契约与独立发布边界；首个远端流程候选为私有 Bot 的独立桌面通道，自有云业务出现后再增加 Koyori API 服务。站点和服务独立发布，本地 Skills 不依赖服务器；当前只部署文档站，API 尚未实现，不复制私有 Bot 实现。
 
@@ -51,4 +51,4 @@
 - Git 备份使用的远端仓库、凭据方式、保留策略与失败后的用户操作；先完成真实仓库往返再开放默认入口。
 - 个人 Agent 后续 Provider/模型目录，以及私有 Bot 服务的设备授权边界。
 - 首次公开 preview 的 macOS 架构、最低系统版本、签名身份和更新源。
-- 本轮已合并文档的正式域名部署、Dokploy 回滚验证和版本记录。
+- Dokploy 回滚演练和后续版本记录；常规部署不需要重新决定域名。

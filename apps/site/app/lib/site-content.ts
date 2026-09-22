@@ -24,6 +24,12 @@ export const searchablePages = [
     keywords: "Skills Claude 调用 使用 次数 账本 证据 规则 保留 复查 CLI",
   },
   {
+    title: "自配模型与文字对话",
+    href: "/docs/agent",
+    description: "配置模型连接，管理本地会话，并审阅单项 Skill 的使用证据摘要后发起讨论。",
+    keywords: "Agent 模型 连接 API Key 对话 会话 取消 钥匙串 Skill 讨论 摘要 使用证据",
+  },
+  {
     title: "本地开发",
     href: "/docs/development",
     description: "Node、pnpm、文档站与桌面工程的开发起点。",

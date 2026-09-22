@@ -486,6 +486,23 @@ select {
   font-size: 11px;
   color: #a18e98;
 }
+.detail-actions {
+  display: grid;
+  gap: 7px;
+  margin-top: 15px;
+}
+.detail-actions .button {
+  width: 100%;
+  white-space: normal;
+}
+.detail-actions .text-button {
+  justify-self: start;
+}
+.detail .detail-pending-note {
+  margin-top: 10px;
+  color: #956278;
+  line-height: 1.65;
+}
 .detail dl {
   font-size: 10px;
   margin: 22px 0;

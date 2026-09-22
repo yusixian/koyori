@@ -309,6 +309,121 @@
   box-shadow: 0 0 0 4px #ebe5e7;
 }
 
+.agent-discussion-preview {
+  min-width: 0;
+  margin-bottom: 14px;
+  border: 1px solid #dfd2d7;
+  border-radius: 12px;
+  padding: 16px 18px;
+  background:
+    radial-gradient(circle at 93% 0, #e7f3ed 0 3%, transparent 26%),
+    linear-gradient(112deg, #fffdfd, #fbf1f4);
+  box-shadow: 0 6px 18px #5d31400b;
+}
+
+.agent-discussion-heading,
+.agent-discussion-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.agent-discussion-heading h2 {
+  overflow-wrap: anywhere;
+  color: #604b54;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.agent-discussion-heading > span {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 5px 9px;
+  color: #577466;
+  background: #e7f2ec;
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.agent-discussion-boundary {
+  margin-top: 9px;
+  color: #8f7a83;
+  font-size: 10px;
+  line-height: 1.7;
+}
+
+.agent-discussion-meta {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.35fr) minmax(0, 1fr);
+  gap: 10px;
+  margin: 13px 0;
+}
+
+.agent-discussion-meta > div {
+  min-width: 0;
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: #fff9fb;
+}
+
+.agent-discussion-meta dt {
+  color: #aa919b;
+  font-size: 9px;
+}
+
+.agent-discussion-meta dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+  color: #705e66;
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.agent-discussion-details {
+  border: 1px solid #eadfe3;
+  border-radius: 9px;
+  background: #fff;
+}
+
+.agent-discussion-details summary {
+  padding: 9px 11px;
+  color: #8d6877;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.agent-discussion-details pre {
+  max-height: 220px;
+  margin: 0;
+  overflow: auto;
+  border-top: 1px solid #f0e7ea;
+  padding: 12px;
+  color: #66545c;
+  background: #fcfaf9;
+  font:
+    10px / 1.75 "SFMono-Regular",
+    monospace;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.agent-discussion-warning {
+  margin-top: 10px;
+  border-radius: 7px;
+  padding: 8px 10px;
+  color: #95526a;
+  background: #fff0f4;
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.agent-discussion-actions {
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
 .agent-workspace {
   display: grid;
   grid-template-columns: minmax(210px, 255px) minmax(0, 1fr);
@@ -729,6 +844,15 @@
 
   .agent-message {
     max-width: 94%;
+  }
+
+  .agent-discussion-meta {
+    grid-template-columns: 1fr;
+  }
+
+  .agent-discussion-actions {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .agent-composer-footer > span {
