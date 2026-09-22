@@ -3,6 +3,7 @@ import { isAbsolute, join, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { app, BrowserWindow, dialog, ipcMain, net, protocol, session, shell } from "electron";
 import { createGitBackupStore } from "../../../../packages/core/src/git-backup";
+import { createAgentController } from "./agent-controller";
 import { createManagementController } from "./management-controller";
 import { createRemoteBackupController } from "./remote-backup-controller";
 import { createUsageController } from "./usage-controller";
@@ -20,10 +21,16 @@ let workspace: Awaited<ReturnType<typeof createWorkspaceController>> | undefined
 let usage: Awaited<ReturnType<typeof createUsageController>> | undefined;
 let management: Awaited<ReturnType<typeof createManagementController>> | undefined;
 let remoteBackup: Awaited<ReturnType<typeof createRemoteBackupController>> | undefined;
+let agent: Awaited<ReturnType<typeof createAgentController>> | undefined;
+let agentShutdown: Promise<void> | undefined;
+let agentStopped = false;
 let refreshTimer: ReturnType<typeof setInterval> | undefined;
 let stopped = false;
 function changed() {
   if (window && !window.isDestroyed()) window.webContents.send("workspace:changed");
+}
+function agentChanged() {
+  if (window && !window.isDestroyed()) window.webContents.send("agent:changed");
 }
 async function refresh() {
   if (
@@ -90,6 +97,7 @@ function createWindow() {
     usage?.cancel();
     management?.cancel();
     remoteBackup?.cancel();
+    void agent?.cancel().catch(() => agentChanged());
     window = undefined;
   });
   if (devURL) void window.loadURL(devURL);
@@ -106,6 +114,11 @@ else {
     .then(async () => {
       const dataDir = app.getPath("userData");
       try {
+        agent = await createAgentController({
+          path: join(dataDir, "agent.json"),
+          trusted,
+          changed: agentChanged,
+        });
         workspace = await createWorkspaceController({
           path: join(dataDir, "sources.json"),
           home: homedir(),
@@ -203,12 +216,30 @@ else {
   app.on("window-all-closed", () => {
     if (process.platform !== "darwin") app.quit();
   });
-  app.on("before-quit", () => {
+  app.on("before-quit", (event) => {
     stopped = true;
     remoteBackup?.stop();
     clearInterval(refreshTimer);
     workspace?.cancel();
     usage?.cancel();
     management?.cancel();
+    if (agent && !agentStopped) {
+      event.preventDefault();
+      if (agentShutdown) return;
+      agentShutdown = agent.stop().then(
+        () => {
+          agentStopped = true;
+          app.quit();
+        },
+        () => {
+          dialog.showErrorBox(
+            "会话保存失败",
+            "请保留应用数据目录。未完成的回复将在下次启动时标记为中断。",
+          );
+          agentStopped = true;
+          app.quit();
+        },
+      );
+    }
   });
 }

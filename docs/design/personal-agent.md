@@ -52,6 +52,8 @@ flowchart LR
 
 这里“接入接口”首先是 Bot 服务内的窄模块，不先增加一个独立部署的网关产品。服务继续由 Dokploy 管理；Koyori 不持有 Dokploy 部署权限或服务端 Provider 主密钥。
 
+统一域名下的路由、后端选型和分阶段部署见 [后端方案](backend.md)。首个桌面通道候选路径为 `/api/v1/agent/*`；它与文档站独立部署。Koyori 将来出现独立云业务时，再建立自己的 API 服务；参考 Bot 架构和调用 Bot 能力分别处理。
+
 | 放在哪里 | 内容 |
 | --- | --- |
 | Koyori 开源仓库与安装包 | 自己的 UI、桌面权限检查、Skills 核心、公开连接契约、Bot 适配器、合成 fake server、第三方声明 |

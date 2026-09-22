@@ -1,12 +1,20 @@
 # Koyori 实施状态
 
-> 2026-09-22；M1 工程基线、M2 使用证据与当前 M3 Skills 管理切片已进入开发版。公开仓库为 [yusixian/koyori](https://github.com/yusixian/koyori)，尚无公开发行版。
+> 2026-09-22；M1 工程基线、M2 使用证据、M3 Skills 管理和本轮个人 Agent 首个开发切片已进入开发版。公开仓库为 [yusixian/koyori](https://github.com/yusixian/koyori)，尚无公开发行版。
 
 ## 当前迭代
 
-本轮把 Skills 从“手动选择后只读查看”推进到一条可自用的管理流程：自动发现 Claude Code 与 Codex 目录，按用户选择持续更新 Claude Code 使用证据，预览并执行跨客户端同步，建立本地快照并在冲突前停止。
+本轮在已合并的 Skills 管理流程之上，加入个人 Agent 的首个开发切片：使用自配 OpenAI-compatible Chat Completions 连接进行本地文字会话，并保留连接隔离、取消、错误和未知用量状态。
 
-这批能力已经通过独立 review、全量 CI 和真实 Electron 验收，[PR #1](https://github.com/yusixian/koyori/pull/1) 已合并。文档站已部署到独立 Dokploy 应用，临时域名可访问；正式域名仍待 DNS 配置。完整 0.1 仍包括 Git 备份真实账号验收、个人 Agent/Bot 连接和公开分发。
+Skills 管理切片已经通过独立 review、CI 和真实 Electron 验收，[PR #1](https://github.com/yusixian/koyori/pull/1) 与文档跟进的 [PR #2](https://github.com/yusixian/koyori/pull/2) 已合并。文档站已部署到独立 Dokploy 应用，正式域名的 DNS/HTTPS 已实测；当前线上仍是旧部署 commit `1ed91aff27be4e8e1fa4220c670853773a19cbba`。本轮 Agent 的真实 Electron 验收已通过，CI、合并和新版部署仍待完成，完整 0.1 还包括 Git 备份真实账号验收、个人 Bot 接入和公开分发。
+
+## 个人 Agent（本轮开发版）
+
+- 支持用户配置 OpenAI-compatible Chat Completions 流式连接；连接配置按连接身份隔离，API 密钥使用系统安全存储，不在界面回显。
+- 启动和浏览会话不访问钥匙串；仅明确保存非空密钥或使用已存密钥发送消息时才探测，取消授权不降级为明文。
+- 本地会话支持新建、切换、改名和删除；发送后逐段显示文字，支持取消。失败、取消和应用退出中断会保留对应状态，服务没有返回 token 用量时保持未知。
+- 请求只携带当前会话文字，不自动发送 Skills、使用账本、目录或日志；当前 Agent 以纯文本回复为主，没有本机写入工具。
+- Bot 桌面通道/API、工具操作卡、语音和公开发行仍未实现；后端参考方案见 [后端与统一域名](design/backend.md)，不把私有 Bot 实现带入公开工程。
 
 ## Skills 发现与清单
 
@@ -43,24 +51,25 @@
 
 - managed-files 与 Git 备份核心 20 项定向测试通过，覆盖完整目录、权限和空目录、显式替换、写前快照、外部修改、链接边界、部分恢复、动态撤权、便携快照、Git 原始字节往返及不同远端隔离。
 - 桌面管理/自动备份/来源 controller 与管理 CLI 共 16 项定向测试通过；根 TypeScript、相关格式检查与公共文件基础检查通过。
-- [CI 35696269229](https://github.com/yusixian/koyori/actions/runs/35696269229) 在 `ebc0d529d10f3c5c51e6f9813f48bcbe934baf37` 通过 16 个测试文件、116 项测试，以及完整类型、格式、构建、依赖审计、文档容器和 macOS 打包后验收。合并 commit `1ed91aff27be4e8e1fa4220c670853773a19cbba` 的 Git tree 与该提交相同。
-- 文档站类型检查和静态构建通过，新指南已生成 `/docs/skills-management` 静态页面。构建通过只能证明站点产物可生成，不代表 Dokploy 已部署。
+- 本轮 Agent 的 Provider 定向 11 项、controller 定向 11 项共 22 项通过；相关 TypeScript 检查通过。真实 Electron 合成服务验收通过，覆盖流式回复、取消、重启保留、页面切换草稿、连接隔离、错误脱敏和无密钥流程不访问钥匙串；包含本轮改动的 CI、合并和新版部署尚未完成。
+- [CI 35696269229](https://github.com/yusixian/koyori/actions/runs/35696269229) 属于已合并的 Skills 基线，在 `ebc0d529d10f3c5c51e6f9813f48bcbe934baf37` 通过 16 个测试文件、116 项测试，以及完整类型、格式、构建、依赖审计、文档容器和 macOS 打包后验收。合并 commit `1ed91aff27be4e8e1fa4220c670853773a19cbba` 的 Git tree 与该提交相同，不能作为本轮 Agent 的 CI 证据。
+- 文档站类型检查和静态构建通过，新指南已生成 `/docs/agent` 静态页面。构建通过只能证明站点产物可生成，不代表 Dokploy 已部署。
 
-历史候选包、旧 CI 或之前的本机性能数据不能证明当前代码。审查修复后真实 Electron 两项流程已重新通过，覆盖自动发现、统计启用、完整目录同步、本地备份/恢复预览、操作历史、Git 快照上传/取回与重启保留；使用临时 home 与本地 bare Git 仓库。桌面检查 960px；文档站已检查桌面、390px、移动导航、搜索和新指南。
+历史候选包、旧 CI 或之前的本机性能数据不能证明当前代码。审查修复后，Skills 切片的真实 Electron 两项流程已重新通过，覆盖自动发现、统计启用、完整目录同步、本地备份/恢复预览、操作历史、Git 快照上传/取回与重启保留；使用临时 home 与本地 bare Git 仓库。桌面检查 960px；文档站已检查桌面、390px、移动导航、搜索和新指南。本轮 Agent 已单独通过真实 Electron 验收，并检查 1240px 与 960px 窗口布局。
 
 独立审查复核了文件替换竞态：最后校验后的外部编辑、旧文件句柄继续写入、跨卷 fallback，以及两个关键 rename 时刻的进程中断均能保留实际原目录并通过日志定位。该证据不涵盖断电持久性。
 
 Git 独立复核已验证完整导出、上传、取回、导入链路保留空目录、0600/0700 权限、被忽略文件、CRLF 和中文目录名；断开及重启后也不能把已有历史传给另一个远端。当前已有历史的备份库绑定原远端，更换地址会被拒绝，不能据此推送旧历史到新仓库。
 
-Dokploy 已部署 `1ed91aff27be4e8e1fa4220c670853773a19cbba`，平台记录为 Done。临时 HTTP 域名的健康检查、主页、两个 Skills 指南、下载、更新和搜索页面均通过公开 HTTP 检查，不存在路径为 404。另以真实浏览器验证了线上桌面首页、390px 移动导航、关键词搜索与指南跳转，指南无横向溢出。
+Dokploy 当前仍部署 `1ed91aff27be4e8e1fa4220c670853773a19cbba`，平台记录为 Done。正式域名 [https://koyori.cosine.ren/](https://koyori.cosine.ren/) 已实测 DNS/HTTPS：主页返回 200，`/healthz` 返回 `ok`，Skills 指南、`/download`、`/changelog` 和 `/search` 返回 200，不存在路径返回 404。旧部署另有真实浏览器验证，覆盖桌面首页、390px 移动导航、关键词搜索与指南跳转，指南无横向溢出；这些线上证据对应旧的 Skills 部署，不代表本轮 Agent 已上线。
 
-尚未完成的外部证据：正式域名 DNS/HTTPS、Git 远端真实账号往返、安装包签名/公证、公开 Release、跨公开版本升级。当前安装包仍是 Apple Silicon macOS 未签名候选，不是正式发行版。
+尚未完成的外部证据：包含本轮改动的 CI、合并和新版部署，Git 远端真实账号往返、安装包签名/公证、公开 Release、跨公开版本升级。当前安装包仍是 Apple Silicon macOS 未签名候选，不是正式发行版。
 
 ## 后续顺序
 
-1. 补齐正式域名 DNS，核对 HTTPS、线上交互与移动布局；验证后再公开固定站点入口。
-2. 保留当前可用部署，并验证文档站回滚流程。
+1. 完成本轮 Agent 的真实 Electron 验收，并记录连接、会话、流式回复、取消和重启状态的结果。
+2. 为本轮 Agent 完成 CI、合并和新版文档站部署，再复核正式域名下的指南、搜索和移动布局；保留当前部署并验证回滚流程。
 3. 用合并后的候选做真实自用：Claude → Codex 同步、本地备份与恢复、自动统计覆盖；根据证据修正兼容规则。
 4. 完成 Git 远端快照的真实往返与失败恢复，再决定是否作为 0.1 默认入口。
-5. 推进个人 Agent 的模型连接、会话和操作卡；Bot 桌面通道继续通过独立私有服务边界接入。
+5. 按独立私有服务边界推进 Bot 桌面通道/API、工具操作卡和语音；不把私有 Bot 实现复制到公开工程。
 6. 满足许可证、历史公开检查、候选安装验收和发布授权后，再创建首个公开 preview/0.1；文档站部署不等于应用已经发布。

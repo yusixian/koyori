@@ -2,6 +2,20 @@ import { contextBridge, ipcRenderer } from "electron";
 import type { KoyoriBridge } from "../bridge";
 
 const bridge: KoyoriBridge = {
+  getAgent: () => ipcRenderer.invoke("agent:get"),
+  saveAgentConnection: (input) => ipcRenderer.invoke("agent:connection:save", input),
+  disconnectAgent: () => ipcRenderer.invoke("agent:disconnect"),
+  createAgentSession: () => ipcRenderer.invoke("agent:session:create"),
+  selectAgentSession: (id) => ipcRenderer.invoke("agent:session:select", id),
+  renameAgentSession: (id, title) => ipcRenderer.invoke("agent:session:rename", id, title),
+  deleteAgentSession: (id) => ipcRenderer.invoke("agent:session:delete", id),
+  sendAgentMessage: (id, text) => ipcRenderer.invoke("agent:send", id, text),
+  cancelAgentRun: () => ipcRenderer.invoke("agent:cancel"),
+  onAgentChanged: (listener) => {
+    const notify = () => listener();
+    ipcRenderer.on("agent:changed", notify);
+    return () => ipcRenderer.removeListener("agent:changed", notify);
+  },
   getWorkspace: () => ipcRenderer.invoke("workspace:get"),
   discoverSources: (resetIgnored) => ipcRenderer.invoke("workspace:discover", resetIgnored),
   setAutomaticDiscovery: (enabled) => ipcRenderer.invoke("workspace:automatic", enabled),

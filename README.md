@@ -10,7 +10,9 @@ Koyori 是自用优先、从首版按开源方式建设的 AI Native 个人工�
 
 ## 当前状态
 
-**开发版的 Skills 自用闭环已可运行，尚无公开发行版。** 桌面端会自动发现 Claude Code 与 Codex 的常用 Skills 目录，支持完整目录同步、本地快照和冲突复核；Claude Code 使用证据可在用户开启后增量更新。Git 远端备份支持明确选择后上传、取回历史与自动重试，已通过隔离仓库验收。CLI、独立文档站与本地候选包已经建立；模型/Bot 连接和语音仍未实现。证据与后续范围见 [实施状态](docs/implementation-status.md)。
+**Skills 管理与自配模型文字对话已进入开发版，尚无公开发行版。** 桌面端可自动发现 Claude Code 与 Codex Skills、核对使用证据，预览并执行完整目录同步、本地快照和恢复。Git 备份已通过隔离仓库往返验收。
+
+个人 Agent 支持 OpenAI-compatible 模型连接、本地会话、流式回复与取消，不自动发送 Skills 或日志。Bot 接入、工具操作卡和语音仍待实现。[文档站](https://koyori.cosine.ren/)已通过正式 HTTPS 检查；验证记录与剩余范围见[实施状态](docs/implementation-status.md)。
 
 ## 本地开发
 
@@ -32,13 +34,13 @@ pnpm dev
 | Skills | 自动发现新增和变更、按项目启用；明确全局来源对可见性的影响 |
 | Claude commands | 统一浏览、编辑和管理自定义命令 |
 | 指令与文档 | 扫描全局、项目及嵌套 AGENTS.md / CLAUDE.md，以及项目 Markdown |
-| Agent 与 CLI | 原生对话、自配模型或个人 Bot 连接、明确偏好与可审阅操作卡；CLI 共用核心查询/计划，ACP 后续评估 |
+| Agent 与 CLI | 自配模型文字对话与本地会话；个人 Bot 连接、工具操作卡和明确偏好后续接入；CLI 共用核心查询/计划，ACP 后续评估 |
 
-自动发现会在启动和运行期间检查已知目录；用户开启后，Claude Code Skills 使用证据随检查增量更新，并保留覆盖、规则与到期复查。同步、恢复和本地快照已经使用同一套计划与 revision 边界；首版扩大草案加入 Agent，基于用户选定的资源和摘要解释建议。推荐不会直接触发删除。
+自动发现会在启动和运行期间检查已知目录；用户开启后，Claude Code Skills 使用证据随检查增量更新，并保留覆盖、规则与到期复查。同步、恢复和本地快照已经使用同一套计划与 revision 边界；个人 Agent 当前只把当前会话文字交给用户选定的模型服务，不自动附加 Skills、使用账本或日志。推荐不会直接触发删除。
 
 ## MVP 路线
 
-当前首版方案见 [0.1 MVP 审阅草案](docs/design/mvp-0.1.0.md)：以 **Skills + 个人 Agent** 为两条主线：资源清单、使用证据与可恢复整理，连接个人 Bot 的原生对话和操作卡；配套文档站与安装包。**方向已确认，工程起点已建立；完整 0.1 尚未交付。** 下列内容保留为长期模块方向，不是 0.1 的全部交付要求。
+当前首版方案见 [0.1 MVP 审阅草案](docs/design/mvp-0.1.0.md)：以 **Skills + 个人 Agent** 为两条主线：资源清单、使用证据与可恢复整理，自配模型文字会话；个人 Bot 的原生对话和操作卡仍是后续范围，配套文档站与安装包。**方向已确认，工程起点已建立；完整 0.1 尚未交付。** 下列内容保留为长期模块方向，不是 0.1 的全部交付要求。
 
 工程起步同时建立版本管理、Dokploy 文档站配置、下载页、更新说明与安装包验收；这些不再推迟到 MVP 之后。首条流程为选择目录、只读扫描和预览，以下资源能力按切片推进。
 
@@ -54,6 +56,7 @@ pnpm dev
 - 自动发现不等于自动启用、上传、运行或删除。
 - GUI、CLI 和 AI 共用核心操作与权限边界。
 - 清缓存只涉及本应用可重建数据，保护 Skills、配置、凭据和草稿。
+- Agent 连接按连接身份隔离，密钥使用系统安全存储加密后保存在本机；模型请求只包含当前会话文字，不自动携带 Skills、账本或日志。
 - 本地核心无需云账户；专业版、可选云服务与团队能力留作后续扩展。
 
 ## 文档与继续开发
@@ -61,6 +64,7 @@ pnpm dev
 - [产品范围](docs/product.md)：目标、MVP、自动发现与 AI Native。
 - [0.1 MVP 审阅草案](docs/design/mvp-0.1.0.md)：界面草图、首版边界、验收、发布和 Sol 编码分工。
 - [个人 Agent 与 Bot 接入](docs/design/personal-agent.md)：角色、记忆、语音候选与私有服务接入边界。
+- [自配模型与文字对话](apps/site/content/docs/agent.mdx)：OpenAI-compatible 连接、本地会话、流式回复、取消与数据边界。
 - [Skills Manager 参考](docs/design/skills-manager-reference.md)：实现/兼容性调研、选择性复用与许可要求。
 - [Skills 发现、同步与备份](apps/site/content/docs/skills-management.mdx)：自动检测范围、安全同步、本地快照与恢复。
 - [使用统计指南](apps/site/content/docs/skill-usage.mdx) · [账本实现与限制](docs/design/usage-ledger.md)。

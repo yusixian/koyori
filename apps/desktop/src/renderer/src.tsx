@@ -27,6 +27,7 @@ import { createRoot } from "react-dom/client";
 import logo from "../../../../brand/logo.png";
 import type { SourceTarget } from "../bridge";
 import "./style.css";
+import { AgentPanel } from "./AgentPanel";
 import { CollectionPanel } from "./CollectionPanel";
 import { ManagementPanel } from "./ManagementPanel";
 import { UsagePanel } from "./UsagePanel";
@@ -232,7 +233,7 @@ function App() {
             onClick={() => setPage("agent")}
           >
             <MessageCircle size={18} />
-            Agent<small>筹备中</small>
+            Agent
           </button>
           <button
             type="button"
@@ -291,6 +292,9 @@ function App() {
             本机工作台
           </span>
         </header>
+        <div hidden={page !== "agent"}>
+          <AgentPanel />
+        </div>
         {page === "skills" ? (
           <>
             <section className="page-heading">
@@ -692,30 +696,22 @@ function App() {
               </div>
             )}
           </>
-        ) : (
+        ) : page === "services" ? (
           <section className="coming">
             <img src={logo} alt="Koyori" />
-            <p className="eyebrow">{page === "agent" ? "A LITTLE CLOSER" : "YOUR CONNECTIONS"}</p>
-            <h1>{page === "agent" ? "一起把事情理清楚。" : "常用的服务，也可以在这里。"}</h1>
-            <p>
-              {page === "agent"
-                ? "这里将是你的个人 Agent。可以带着选定的 Skills 来讨论，看到建议的依据，再决定是否执行。"
-                : "计划先接入 cos-tool-bot，让桌面成为自己的服务入口。私有能力和凭据继续留在服务器。"}
-            </p>
+            <p className="eyebrow">YOUR CONNECTIONS</p>
+            <h1>常用的服务，也可以在这里。</h1>
+            <p>计划先接入 cos-tool-bot，让桌面成为自己的服务入口。私有能力和凭据继续留在服务器。</p>
             <div className="planned">
               <span>当前状态</span>
               <strong>尚未接入</strong>
-              <p>
-                {page === "agent"
-                  ? "本阶段先建立工作台与资源清单。模型、会话、记忆和语音将在后续里程碑加入。"
-                  : "本阶段没有远程连接，不会请求你的 Bot 密钥或发送数据。"}
-              </p>
+              <p>Bot 桌面通道仍待实现。现在可以在 Agent 中配置自己的模型，开始文字对话。</p>
             </div>
             <button type="button" className="button" onClick={() => setPage("skills")}>
               先整理 Skills <ChevronRight size={15} />
             </button>
           </section>
-        )}
+        ) : null}
       </main>
     </div>
   );
