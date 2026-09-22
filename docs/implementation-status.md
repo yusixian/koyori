@@ -6,7 +6,7 @@
 
 本轮在已合并的 Skills 管理流程之上，加入个人 Agent 的首个开发切片：使用自配 OpenAI-compatible Chat Completions 连接进行本地文字会话，并保留连接隔离、取消、错误和未知用量状态。
 
-Skills 管理切片已经通过独立 review、CI 和真实 Electron 验收，[PR #1](https://github.com/yusixian/koyori/pull/1) 与文档跟进的 [PR #2](https://github.com/yusixian/koyori/pull/2) 已合并。文档站已部署到独立 Dokploy 应用，正式域名的 DNS/HTTPS 已实测；当前线上仍是旧部署 commit `1ed91aff27be4e8e1fa4220c670853773a19cbba`。本轮 Agent 的真实 Electron 验收已通过，CI、合并和新版部署仍待完成，完整 0.1 还包括 Git 备份真实账号验收、个人 Bot 接入和公开分发。
+Skills 管理切片已经通过独立 review、CI 和真实 Electron 验收，[PR #1](https://github.com/yusixian/koyori/pull/1) 与文档跟进的 [PR #2](https://github.com/yusixian/koyori/pull/2) 已合并。文档站已部署到独立 Dokploy 应用，正式域名的 DNS/HTTPS 已实测；当前线上仍是旧部署 commit `1ed91aff27be4e8e1fa4220c670853773a19cbba`。本轮 Agent 已通过真实 Electron 与 CI，[PR #3](https://github.com/yusixian/koyori/pull/3) 已合并；新版文档部署待完成，完整 0.1 还包括 Git 备份真实账号验收、个人 Bot 接入和公开分发。
 
 ## 个人 Agent（本轮开发版）
 
@@ -51,7 +51,8 @@ Skills 管理切片已经通过独立 review、CI 和真实 Electron 验收，[P
 
 - managed-files 与 Git 备份核心 20 项定向测试通过，覆盖完整目录、权限和空目录、显式替换、写前快照、外部修改、链接边界、部分恢复、动态撤权、便携快照、Git 原始字节往返及不同远端隔离。
 - 桌面管理/自动备份/来源 controller 与管理 CLI 共 16 项定向测试通过；根 TypeScript、相关格式检查与公共文件基础检查通过。
-- 本轮 Agent 的 Provider 定向 11 项、controller 定向 11 项共 22 项通过；相关 TypeScript 检查通过。真实 Electron 合成服务验收通过，覆盖流式回复、取消、重启保留、页面切换草稿、连接隔离、错误脱敏和无密钥流程不访问钥匙串；包含本轮改动的 CI、合并和新版部署尚未完成。
+- 本轮 Agent 的 Provider 定向 11 项、controller 定向 11 项共 22 项通过；相关 TypeScript 检查通过。真实 Electron 合成服务验收通过，覆盖流式回复、取消、重启保留、页面切换草稿、连接隔离、错误脱敏和无密钥流程不访问钥匙串；[CI 35703564665](https://github.com/yusixian/koyori/actions/runs/35703564665) 已通过，[PR #3](https://github.com/yusixian/koyori/pull/3) 已合并。
+- [CI 35703564665](https://github.com/yusixian/koyori/actions/runs/35703564665) 在 `96c02611765ce7aa74f5db9bbeab5e6f196c340a` 通过 18 个测试文件、138 项测试、完整检查、依赖审计、文档容器及 macOS 打包前后三项真实 Electron 验收。Agent 合并 commit `42e92844168eb3ba487d84dee7b3c9f9fbc67e57` 的 Git tree 与该验证提交相同。
 - [CI 35696269229](https://github.com/yusixian/koyori/actions/runs/35696269229) 属于已合并的 Skills 基线，在 `ebc0d529d10f3c5c51e6f9813f48bcbe934baf37` 通过 16 个测试文件、116 项测试，以及完整类型、格式、构建、依赖审计、文档容器和 macOS 打包后验收。合并 commit `1ed91aff27be4e8e1fa4220c670853773a19cbba` 的 Git tree 与该提交相同，不能作为本轮 Agent 的 CI 证据。
 - 文档站类型检查和静态构建通过，新指南已生成 `/docs/agent` 静态页面。构建通过只能证明站点产物可生成，不代表 Dokploy 已部署。
 
@@ -63,12 +64,12 @@ Git 独立复核已验证完整导出、上传、取回、导入链路保留空�
 
 Dokploy 当前仍部署 `1ed91aff27be4e8e1fa4220c670853773a19cbba`，平台记录为 Done。正式域名 [https://koyori.cosine.ren/](https://koyori.cosine.ren/) 已实测 DNS/HTTPS：主页返回 200，`/healthz` 返回 `ok`，Skills 指南、`/download`、`/changelog` 和 `/search` 返回 200，不存在路径返回 404。旧部署另有真实浏览器验证，覆盖桌面首页、390px 移动导航、关键词搜索与指南跳转，指南无横向溢出；这些线上证据对应旧的 Skills 部署，不代表本轮 Agent 已上线。
 
-尚未完成的外部证据：包含本轮改动的 CI、合并和新版部署，Git 远端真实账号往返、安装包签名/公证、公开 Release、跨公开版本升级。当前安装包仍是 Apple Silicon macOS 未签名候选，不是正式发行版。
+尚未完成的外部证据：新版文档部署，Git 远端真实账号往返、安装包签名/公证、公开 Release、跨公开版本升级。当前安装包仍是 Apple Silicon macOS 未签名候选，不是正式发行版。
 
 ## 后续顺序
 
-1. 完成本轮 Agent 的真实 Electron 验收，并记录连接、会话、流式回复、取消和重启状态的结果。
-2. 为本轮 Agent 完成 CI、合并和新版文档站部署，再复核正式域名下的指南、搜索和移动布局；保留当前部署并验证回滚流程。
+1. 恢复已登录 Dokploy 的浏览器连接后，部署已合并的新文档；当前旧站正常可用。
+2. 新版部署后核对正式域名下的 Agent 指南、搜索和移动布局，记录部署 commit；保留上一部署并验证回滚流程。
 3. 用合并后的候选做真实自用：Claude → Codex 同步、本地备份与恢复、自动统计覆盖；根据证据修正兼容规则。
 4. 完成 Git 远端快照的真实往返与失败恢复，再决定是否作为 0.1 默认入口。
 5. 按独立私有服务边界推进 Bot 桌面通道/API、工具操作卡和语音；不把私有 Bot 实现复制到公开工程。
