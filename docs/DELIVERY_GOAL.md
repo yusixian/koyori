@@ -38,7 +38,8 @@
 - [CI 35696269229](https://github.com/yusixian/koyori/actions/runs/35696269229) 在 `ebc0d529d10f3c5c51e6f9813f48bcbe934baf37` 全部通过：116 项测试、Linux 文档容器、macOS 打包与打包后两项 Electron 验收。
 - [PR #1](https://github.com/yusixian/koyori/pull/1) 已合并，`origin/main` 核对为 `1ed91aff27be4e8e1fa4220c670853773a19cbba`，与验收提交的 Git tree 一致。
 - Dokploy 部署显示 Done，部署 commit 为 `1ed91aff27be4e8e1fa4220c670853773a19cbba`。临时 HTTP 域名的 `/healthz` 返回 `ok`；主页、两个 Skills 指南、下载、更新记录和搜索页面均为 200 且包含本轮内容；不存在路径返回 404。
-- 剩余外部条件：正式子域尚无 DNS A 记录，正式域名 HTTPS 与最终线上浏览器交互仍待补充验证。临时地址及服务器信息不写入公开仓库。没有使用真实个人 Skills 进行写入或上传，也没有执行公开桌面发版。
+- 临时域名的真实浏览器验收已补齐：桌面首页、390px 移动导航、关键词搜索及指南跳转通过，指南页面无横向溢出。
+- 剩余外部条件：正式子域尚无 DNS A 记录，正式域名 HTTPS 仍待验证。临时地址及服务器信息不写入公开仓库。没有使用真实个人 Skills 进行写入或上传，也没有执行公开桌面发版。
 
 ## 后续恢复入口
 
