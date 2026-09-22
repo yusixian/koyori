@@ -8,6 +8,7 @@ import type {
   UsageRules,
   UsageView,
 } from "@koyori/core";
+import type { AgentConnectionInput, AgentView } from "./agent-types";
 
 export interface SourceTarget {
   id: string;
@@ -82,6 +83,16 @@ export interface ManagementView {
 }
 
 export interface KoyoriBridge {
+  getAgent(): Promise<AgentView>;
+  saveAgentConnection(input: AgentConnectionInput): Promise<AgentView>;
+  disconnectAgent(): Promise<AgentView>;
+  createAgentSession(): Promise<AgentView>;
+  selectAgentSession(id: string): Promise<AgentView>;
+  renameAgentSession(id: string, title: string): Promise<AgentView>;
+  deleteAgentSession(id: string): Promise<AgentView>;
+  sendAgentMessage(sessionId: string, text: string): Promise<AgentView>;
+  cancelAgentRun(): Promise<AgentView>;
+  onAgentChanged(listener: () => void): () => void;
   getWorkspace(): Promise<WorkspaceView>;
   discoverSources(resetIgnored?: boolean): Promise<WorkspaceView>;
   setAutomaticDiscovery(enabled: boolean): Promise<WorkspaceView>;

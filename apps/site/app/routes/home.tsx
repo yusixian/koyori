@@ -60,7 +60,7 @@ export default function HomePage() {
             <h2 id="now-title">Skills 自用闭环正在成形</h2>
           </div>
           <p>
-            开发版已支持自动发现 Claude Code 与 Codex Skills、完整目录同步和本地恢复快照；Claude Code 使用证据可在开启后持续更新。个人 Agent 与公开发行仍在推进。
+            开发版已支持自动发现 Claude Code 与 Codex Skills、完整目录同步和本地恢复快照；Claude Code 使用证据可在开启后持续更新。个人 Agent 已支持自配模型文字会话和流式回复，安装包尚未公开发行。
           </p>
         </div>
       </section>
@@ -90,7 +90,7 @@ export default function HomePage() {
         <div className="route-links">
           <Link to="/docs/skills-management">管理 Skills <span>↗</span></Link>
           <Link to="/docs/skill-usage">查看使用证据 <span>↗</span></Link>
-          <Link to="/docs/installation">安装状态 <span>↗</span></Link>
+          <Link to="/docs/agent">连接模型 <span>↗</span></Link>
           <Link to="/docs/security">安全与数据 <span>↗</span></Link>
         </div>
       </section>
