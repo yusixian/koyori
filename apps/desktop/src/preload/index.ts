@@ -2,11 +2,46 @@ import { contextBridge, ipcRenderer } from "electron";
 import type { KoyoriBridge } from "../bridge";
 
 const bridge: KoyoriBridge = {
+  getWorkspace: () => ipcRenderer.invoke("workspace:get"),
+  discoverSources: (resetIgnored) => ipcRenderer.invoke("workspace:discover", resetIgnored),
+  setAutomaticDiscovery: (enabled) => ipcRenderer.invoke("workspace:automatic", enabled),
+  addProject: () => ipcRenderer.invoke("workspace:project:add"),
+  onWorkspaceChanged: (listener) => {
+    const notify = () => listener();
+    ipcRenderer.on("workspace:changed", notify);
+    return () => ipcRenderer.removeListener("workspace:changed", notify);
+  },
   getRoots: () => ipcRenderer.invoke("roots:list"),
   addRoot: (client) => ipcRenderer.invoke("roots:add", client),
   removeRoot: (id) => ipcRenderer.invoke("roots:remove", id),
   scan: () => ipcRenderer.invoke("skills:scan"),
   cancelScan: () => ipcRenderer.invoke("skills:cancel"),
+  getUsage: (days) => ipcRenderer.invoke("usage:get", days),
+  addHistorySource: (rootId) => ipcRenderer.invoke("usage:source:add", rootId),
+  disconnectHistorySource: (id) => ipcRenderer.invoke("usage:source:disconnect", id),
+  importUsage: (days) => ipcRenderer.invoke("usage:import", days),
+  cancelUsageImport: () => ipcRenderer.invoke("usage:cancel"),
+  setSkillPreference: (id, patch, days) => ipcRenderer.invoke("usage:preference", id, patch, days),
+  setUsageRules: (rules, days) => ipcRenderer.invoke("usage:rules", rules, days),
+  markUsageReviewed: (days) => ipcRenderer.invoke("usage:reviewed", days),
+  getCollection: () => ipcRenderer.invoke("collection:get"),
+  setCollection: (enabled, ids) => ipcRenderer.invoke("collection:set", enabled, ids),
+  getManagement: () => ipcRenderer.invoke("management:get"),
+  planSync: (ids, target, replace) =>
+    ipcRenderer.invoke("management:sync:plan", ids, target, replace),
+  planRestore: (id, target, replace) =>
+    ipcRenderer.invoke("management:restore:plan", id, target, replace),
+  executePlan: (id) => ipcRenderer.invoke("management:execute", id),
+  backupSkills: (ids) => ipcRenderer.invoke("management:backup", ids),
+  cancelManagement: () => ipcRenderer.invoke("management:cancel"),
+  getRemoteBackup: () => ipcRenderer.invoke("backup:remote:get"),
+  connectRemoteBackup: (remote) => ipcRenderer.invoke("backup:remote:connect", remote),
+  disconnectRemoteBackup: () => ipcRenderer.invoke("backup:remote:disconnect"),
+  publishBackup: (id) => ipcRenderer.invoke("backup:remote:publish", id),
+  refreshRemoteHistory: () => ipcRenderer.invoke("backup:remote:history"),
+  fetchRemoteBackup: (commit) => ipcRenderer.invoke("backup:remote:fetch", commit),
+  setAutomaticBackup: (enabled, ids) => ipcRenderer.invoke("backup:remote:automatic", enabled, ids),
+  cancelRemoteBackup: () => ipcRenderer.invoke("backup:remote:cancel"),
   openProject: () => ipcRenderer.invoke("project:open"),
 };
 contextBridge.exposeInMainWorld("koyori", bridge);

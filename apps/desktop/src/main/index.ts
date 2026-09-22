@@ -1,10 +1,12 @@
-import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
+import { homedir } from "node:os";
+import { isAbsolute, join, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
-import { Worker } from "node:worker_threads";
-import type { ResourceRoot, SkillInventory } from "@koyori/core";
 import { app, BrowserWindow, dialog, ipcMain, net, protocol, session, shell } from "electron";
+import { createGitBackupStore } from "../../../../packages/core/src/git-backup";
+import { createManagementController } from "./management-controller";
+import { createRemoteBackupController } from "./remote-backup-controller";
+import { createUsageController } from "./usage-controller";
+import { createWorkspaceController } from "./workspace-controller";
 
 protocol.registerSchemesAsPrivileged([
   { scheme: "koyori", privileges: { standard: true, secure: true, supportFetchAPI: true } },
@@ -14,30 +16,32 @@ if (dataDirectory && isAbsolute(dataDirectory)) app.setPath("userData", dataDire
 const rendererRoot = resolve(import.meta.dirname, "../renderer");
 const devURL = app.isPackaged ? undefined : process.env.ELECTRON_RENDERER_URL;
 let window: BrowserWindow | undefined;
-let roots: ResourceRoot[] = [];
-let activeScan: AbortController | undefined;
-let settingsPath: string;
-
-function isRoot(value: unknown): value is ResourceRoot {
-  if (!value || typeof value !== "object") return false;
-  return (
-    "id" in value &&
-    typeof value.id === "string" &&
-    "client" in value &&
-    (value.client === "claude-code" || value.client === "codex") &&
-    "path" in value &&
-    typeof value.path === "string" &&
-    isAbsolute(value.path) &&
-    "label" in value &&
-    typeof value.label === "string"
-  );
+let workspace: Awaited<ReturnType<typeof createWorkspaceController>> | undefined;
+let usage: Awaited<ReturnType<typeof createUsageController>> | undefined;
+let management: Awaited<ReturnType<typeof createManagementController>> | undefined;
+let remoteBackup: Awaited<ReturnType<typeof createRemoteBackupController>> | undefined;
+let refreshTimer: ReturnType<typeof setInterval> | undefined;
+let stopped = false;
+function changed() {
+  if (window && !window.isDestroyed()) window.webContents.send("workspace:changed");
 }
-async function persist(next: ResourceRoot[]) {
-  await mkdir(dirname(settingsPath), { recursive: true });
-  const temporary = `${settingsPath}.${randomUUID()}.tmp`;
-  await writeFile(temporary, JSON.stringify({ version: 1, roots: next }, null, 2), { mode: 0o600 });
-  await rename(temporary, settingsPath);
-  roots = next;
+async function refresh() {
+  if (
+    stopped ||
+    workspace?.isBusy() ||
+    usage?.isBusy() ||
+    management?.isBusy() ||
+    remoteBackup?.isBusy()
+  )
+    return;
+  try {
+    await workspace?.refresh();
+    if (!stopped) await usage?.refreshAutomatic();
+    if (!stopped) await remoteBackup?.tick();
+  } catch {
+    // Each controller retains a user-visible failure while preserving previous data.
+    changed();
+  }
 }
 function trusted(event: Electron.IpcMainInvokeEvent) {
   if (
@@ -57,88 +61,6 @@ function trusted(event: Electron.IpcMainInvokeEvent) {
   }
 }
 function registerIpc() {
-  ipcMain.handle("roots:list", (event) => {
-    trusted(event);
-    return roots;
-  });
-  let changingRoots = false;
-  ipcMain.handle("roots:add", async (event, client: unknown) => {
-    trusted(event);
-    if (client !== "claude-code" && client !== "codex") throw new Error("Unsupported client");
-    if (!window || changingRoots || activeScan) throw new Error("An operation is in progress");
-    changingRoots = true;
-    try {
-      const result = await dialog.showOpenDialog(window, {
-        title: "选择要读取的 Skills 目录",
-        properties: ["openDirectory"],
-      });
-      const path = result.filePaths[0];
-      if (result.canceled || !path) return null;
-      const existing = roots.find((root) => root.path === path && root.client === client);
-      if (existing) return existing;
-      const root: ResourceRoot = { id: randomUUID(), client, path, label: basename(path) || path };
-      await persist([...roots, root]);
-      return root;
-    } finally {
-      changingRoots = false;
-    }
-  });
-  ipcMain.handle("roots:remove", async (event, id: unknown) => {
-    trusted(event);
-    if (typeof id !== "string" || changingRoots || activeScan)
-      throw new Error("Cannot remove this source now");
-    changingRoots = true;
-    try {
-      await persist(roots.filter((root) => root.id !== id));
-      return roots;
-    } finally {
-      changingRoots = false;
-    }
-  });
-  ipcMain.handle("skills:scan", async (event) => {
-    trusted(event);
-    if (activeScan || changingRoots) throw new Error("An operation is in progress");
-    const controller = new AbortController();
-    activeScan = controller;
-    try {
-      return await new Promise<SkillInventory>((resolveScan, reject) => {
-        const worker = new Worker(new URL("./scan-worker.js", import.meta.url), {
-          workerData: roots,
-        });
-        let settled = false;
-        const finish = () => {
-          settled = true;
-          controller.signal.removeEventListener("abort", cancel);
-          void worker.terminate();
-        };
-        const cancel = () => {
-          finish();
-          reject(new Error("Scan cancelled"));
-        };
-        controller.signal.addEventListener("abort", cancel, { once: true });
-        worker.once("message", (result: SkillInventory) => {
-          finish();
-          resolveScan(result);
-        });
-        worker.once("error", () => {
-          finish();
-          reject(new Error("Scan failed"));
-        });
-        worker.once("exit", () => {
-          if (!settled) {
-            finish();
-            reject(new Error("Scan interrupted"));
-          }
-        });
-      });
-    } finally {
-      activeScan = undefined;
-    }
-  });
-  ipcMain.handle("skills:cancel", (event) => {
-    trusted(event);
-    activeScan?.abort();
-  });
   ipcMain.handle("project:open", async (event) => {
     trusted(event);
     await shell.openExternal("https://github.com/yusixian/koyori");
@@ -164,7 +86,10 @@ function createWindow() {
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", (event) => event.preventDefault());
   window.on("closed", () => {
-    activeScan?.abort();
+    workspace?.cancel();
+    usage?.cancel();
+    management?.cancel();
+    remoteBackup?.cancel();
     window = undefined;
   });
   if (devURL) void window.loadURL(devURL);
@@ -179,29 +104,65 @@ else {
   void app
     .whenReady()
     .then(async () => {
-      settingsPath = join(app.getPath("userData"), "sources.json");
+      const dataDir = app.getPath("userData");
       try {
-        const state: unknown = JSON.parse(await readFile(settingsPath, "utf8"));
-        if (
-          !state ||
-          typeof state !== "object" ||
-          !("version" in state) ||
-          state.version !== 1 ||
-          !("roots" in state) ||
-          !Array.isArray(state.roots) ||
-          !state.roots.every(isRoot)
-        )
-          throw new Error("Invalid source settings");
-        roots = state.roots;
-      } catch (error) {
-        if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) {
-          dialog.showErrorBox(
-            "无法读取来源设置",
-            "设置文件仍保留在本机，请先备份并检查。应用不会覆盖无法识别的设置。",
-          );
-          app.quit();
-          return;
-        }
+        workspace = await createWorkspaceController({
+          path: join(dataDir, "sources.json"),
+          home: homedir(),
+          codexHome: process.env.CODEX_HOME,
+          claudeConfigDir: process.env.CLAUDE_CONFIG_DIR,
+          getWindow: () => window,
+          resourceBusy: () =>
+            Boolean(usage?.isBusy() || management?.isBusy() || remoteBackup?.isBusy()),
+          observe: async (inventory) => {
+            await usage?.observe(inventory);
+          },
+          trusted,
+          changed,
+        });
+        usage = await createUsageController({
+          path: join(dataDir, "usage.json"),
+          getRoots: () => workspace?.getRoots() ?? [],
+          getInventory: () => workspace?.getInventory() ?? null,
+          getCandidates: () => workspace?.getCandidates() ?? [],
+          getWindow: () => window,
+          resourceBusy: () =>
+            Boolean(workspace?.isBusy() || management?.isBusy() || remoteBackup?.isBusy()),
+          trusted,
+          changed,
+        });
+        management = await createManagementController({
+          dataDirectory: join(dataDir, "management"),
+          transferRoots: [join(dataDir, "remote-backup", "exports"), join(dataDir, "git-backup")],
+          getRoots: () => workspace?.getRoots() ?? [],
+          getTargets: () => workspace?.getTargets() ?? [],
+          getInventory: () => workspace?.getInventory() ?? null,
+          resourceBusy: () =>
+            Boolean(workspace?.isBusy() || usage?.isBusy() || remoteBackup?.isBusy()),
+          refresh: async () => {
+            await workspace?.refresh();
+          },
+          trusted,
+          changed,
+        });
+        remoteBackup = await createRemoteBackupController({
+          dataDirectory: join(dataDir, "remote-backup"),
+          git: await createGitBackupStore(join(dataDir, "git-backup")),
+          management: management.store,
+          getRoots: () => workspace?.getRoots() ?? [],
+          getInventory: () => workspace?.getInventory() ?? null,
+          resourceBusy: () =>
+            Boolean(workspace?.isBusy() || usage?.isBusy() || management?.isBusy()),
+          trusted,
+          changed,
+        });
+      } catch {
+        dialog.showErrorBox(
+          "无法读取工作台数据",
+          "原文件仍保留在本机。请备份并检查应用数据目录；应用不会覆盖无法识别的设置或记录。",
+        );
+        app.quit();
+        return;
       }
       session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) =>
         callback(false),
@@ -226,6 +187,11 @@ else {
       });
       registerIpc();
       createWindow();
+      void refresh();
+      refreshTimer = setInterval(() => {
+        void refresh();
+      }, 30_000);
+      refreshTimer.unref();
       app.on("activate", () => {
         if (!window) createWindow();
       });
@@ -237,5 +203,12 @@ else {
   app.on("window-all-closed", () => {
     if (process.platform !== "darwin") app.quit();
   });
-  app.on("before-quit", () => activeScan?.abort());
+  app.on("before-quit", () => {
+    stopped = true;
+    remoteBackup?.stop();
+    clearInterval(refreshTimer);
+    workspace?.cancel();
+    usage?.cancel();
+    management?.cancel();
+  });
 }

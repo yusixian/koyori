@@ -12,6 +12,18 @@ export const searchablePages = [
     keywords: "安装 macOS 下载 安装包 签名 公证",
   },
   {
+    title: "Skills 发现、同步与备份",
+    href: "/docs/skills-management",
+    description: "自动发现 Claude Code 与 Codex 目录，预览完整目录同步并恢复快照。",
+    keywords: "Skills 自动发现 同步 备份 恢复 Git Codex Claude 目录 冲突 CLI",
+  },
+  {
+    title: "Skills 使用统计",
+    href: "/docs/skill-usage",
+    description: "连接 Claude Code 历史，核对调用证据、覆盖和整理偏好。",
+    keywords: "Skills Claude 调用 使用 次数 账本 证据 规则 保留 复查 CLI",
+  },
+  {
     title: "本地开发",
     href: "/docs/development",
     description: "Node、pnpm、文档站与桌面工程的开发起点。",

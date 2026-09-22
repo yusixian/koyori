@@ -1,4 +1,11 @@
 {
   "title": "Koyori 文档",
-  "pages": ["index", "installation", "development", "security"]
+  "pages": [
+    "index",
+    "installation",
+    "skills-management",
+    "skill-usage",
+    "development",
+    "security"
+  ]
 }

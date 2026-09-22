@@ -1,3 +1,10 @@
+export type * from "./discover-sources.ts";
+export { discoverSources } from "./discover-sources.ts";
+export { createGitBackupStore } from "./git-backup.ts";
+export type * from "./git-backup-types.ts";
+export { importUsage, importUsageIncremental } from "./import-usage.ts";
+export { createManagementStore } from "./managed-files.ts";
+export type * from "./management-types.ts";
 export { scanSkills } from "./scan-skills.ts";
 export type {
   ClientId,
@@ -8,3 +15,12 @@ export type {
   SkillInventory,
   SkillRecord,
 } from "./types.ts";
+export type * from "./usage-cache.ts";
+export { createUsageImportCache, isUsageImportCache } from "./usage-cache.ts";
+export {
+  buildUsageReport,
+  createUsageState,
+  mergeUsageImport,
+  observeSkills,
+} from "./usage-report.ts";
+export type * from "./usage-types.ts";

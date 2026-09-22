@@ -158,4 +158,27 @@ describe("scanSkills", () => {
       256 * 1024,
     );
   });
+
+  it("does not expose interrupted management work directories as active Skills", async () => {
+    const workspace = await createTemporaryDirectory();
+    await writeSkill(workspace, "active", "active", "Active Skill");
+    await writeSkill(
+      workspace,
+      ".koyori-recovery-active-operation",
+      "recovery",
+      "Recovery material",
+    );
+    await writeSkill(workspace, ".koyori-stage-active-operation", "stage", "Staged content");
+    await writeSkill(
+      workspace,
+      ".koyori-displaced-active-operation",
+      "displaced",
+      "Legacy displaced content",
+    );
+
+    const inventory = await scanSkills([root("root", workspace)]);
+
+    expect(inventory.issues).toEqual([]);
+    expect(inventory.skills.map((skill) => skill.name)).toEqual(["active"]);
+  });
 });

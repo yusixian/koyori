@@ -727,3 +727,21 @@ select {
     transition: none;
   }
 }
+
+.skill-views {
+  display: flex;
+  gap: 6px;
+  margin: -10px 0 22px;
+}
+.skill-views button {
+  border: 1px solid transparent;
+  border-radius: 9px;
+  padding: 8px 15px;
+  background: transparent;
+  color: #786a70;
+}
+.skill-views button[aria-pressed="true"] {
+  color: #914961;
+  background: var(--accent);
+  border-color: #ead0da;
+}

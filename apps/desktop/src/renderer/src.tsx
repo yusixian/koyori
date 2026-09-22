@@ -1,4 +1,12 @@
-import type { ClientId, ResourceRoot, SkillInventory, SkillRecord } from "@koyori/core";
+import type {
+  ClientId,
+  DiscoveryIssue,
+  ResourceRoot,
+  SkillInventory,
+  SkillRecord,
+  SkillUsage,
+  UsageView,
+} from "@koyori/core";
 import {
   ArrowUpRight,
   BookOpen,
@@ -14,14 +22,23 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import logo from "../../../../brand/logo.png";
-import type {} from "../bridge";
+import type { SourceTarget } from "../bridge";
 import "./style.css";
+import { CollectionPanel } from "./CollectionPanel";
+import { ManagementPanel } from "./ManagementPanel";
+import { UsagePanel } from "./UsagePanel";
 
 type Page = "skills" | "agent" | "services";
 const names = { "claude-code": "Claude Code", codex: "Codex" };
+function usageLabel(usage: SkillUsage | undefined) {
+  if (!usage || usage.status === "not-connected") return "尚未采集";
+  if (usage.status === "unknown") return "证据不足";
+  if (usage.status === "ambiguous") return "同名待归属";
+  return `${usage.calls} 次尝试 · ${usage.loaded} 次成功返回`;
+}
 const sample: SkillInventory = {
   scannedAt: new Date(0).toISOString(),
   issues: [],
@@ -67,6 +84,10 @@ const sample: SkillInventory = {
 function App() {
   const [page, setPage] = useState<Page>("skills");
   const [roots, setRoots] = useState<ResourceRoot[]>([]);
+  const [targets, setTargets] = useState<SourceTarget[]>([]);
+  const [automaticDiscovery, setAutomaticDiscovery] = useState(true);
+  const [discoveryIssues, setDiscoveryIssues] = useState<DiscoveryIssue[]>([]);
+  const [managementSkill, setManagementSkill] = useState<string | null>(null);
   const [inventory, setInventory] = useState<SkillInventory | null>(null);
   const [example, setExample] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
@@ -76,12 +97,48 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [showSources, setShowSources] = useState(false);
+  const [usage, setUsage] = useState<UsageView | null>(null);
+  const [skillView, setSkillView] = useState<"inventory" | "usage" | "manage">("inventory");
+  const workspaceRequestRef = useRef(0);
   useEffect(() => {
-    window.koyori
-      .getRoots()
-      .then(setRoots)
-      .catch(() => setError("来源设置读取失败，请重启后重试。"));
+    let disposed = false;
+    const update = () => {
+      const requestId = ++workspaceRequestRef.current;
+      void window.koyori
+        .getWorkspace()
+        .then((view) => {
+          if (disposed || requestId !== workspaceRequestRef.current) return;
+          setRoots(view.roots);
+          setTargets(view.targets);
+          setAutomaticDiscovery(view.automaticDiscovery);
+          setDiscoveryIssues(view.discoveryIssues);
+          setInventory(view.inventory);
+          setBusy(view.busy);
+          if (view.error) setError(view.error);
+        })
+        .catch(() => {
+          if (!disposed && requestId === workspaceRequestRef.current)
+            setError("来源设置读取失败，请重启后重试。");
+        });
+    };
+    update();
+    const unsubscribe = window.koyori.onWorkspaceChanged(update);
+    return () => {
+      disposed = true;
+      workspaceRequestRef.current += 1;
+      unsubscribe();
+    };
   }, []);
+  async function refreshWorkspace() {
+    const requestId = ++workspaceRequestRef.current;
+    const view = await window.koyori.getWorkspace();
+    if (requestId !== workspaceRequestRef.current) return;
+    setRoots(view.roots);
+    setTargets(view.targets);
+    setInventory(view.inventory);
+    setAutomaticDiscovery(view.automaticDiscovery);
+    setDiscoveryIssues(view.discoveryIssues);
+  }
   const current = example ? sample : inventory;
   const skills = useMemo(
     () =>
@@ -114,8 +171,9 @@ function App() {
     try {
       const root = await window.koyori.addRoot(client);
       if (root) {
-        setRoots(await window.koyori.getRoots());
+        await refreshWorkspace();
         setExample(false);
+        setSelected(null);
         setShowSources(true);
       }
     } catch {
@@ -128,8 +186,8 @@ function App() {
     setBusy(true);
     setError("");
     try {
-      setRoots(await window.koyori.removeRoot(id));
-      setInventory(null);
+      await window.koyori.removeRoot(id);
+      await refreshWorkspace();
       setSelected(null);
     } catch {
       setError("来源移除失败，请稍后重试。");
@@ -139,6 +197,7 @@ function App() {
   }
   function tryExample() {
     setExample(true);
+    setSkillView("inventory");
     setSelected(null);
     setQuery("");
     setFilter("all");
@@ -244,29 +303,58 @@ function App() {
                 <Layers3 size={29} />
               </div>
             </section>
+            {!example && (
+              <nav className="skill-views" aria-label="Skills 视图">
+                <button
+                  type="button"
+                  aria-pressed={skillView === "inventory"}
+                  onClick={() => setSkillView("inventory")}
+                >
+                  资源清单
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={skillView === "usage"}
+                  onClick={() => setSkillView("usage")}
+                >
+                  使用与建议
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={skillView === "manage"}
+                  onClick={() => setSkillView("manage")}
+                >
+                  同步与备份
+                </button>
+              </nav>
+            )}
             <div className="toolbar">
-              <label className="search">
-                <Search size={17} />
-                <input
-                  aria-label="搜索 Skills"
-                  placeholder="搜索名称、描述或路径…"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                />
-              </label>
-              <select
-                aria-label="筛选客户端"
-                value={filter}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  if (value === "all" || value === "claude-code" || value === "codex")
-                    setFilter(value);
-                }}
-              >
-                <option value="all">全部客户端</option>
-                <option value="claude-code">Claude Code</option>
-                <option value="codex">Codex</option>
-              </select>
+              {skillView === "inventory" && (
+                <>
+                  <label className="search">
+                    <Search size={17} />
+                    <input
+                      aria-label="搜索 Skills"
+                      placeholder="搜索名称、描述或路径…"
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                    />
+                  </label>
+                  <select
+                    aria-label="筛选客户端"
+                    value={filter}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      if (value === "all" || value === "claude-code" || value === "codex")
+                        setFilter(value);
+                    }}
+                  >
+                    <option value="all">全部客户端</option>
+                    <option value="claude-code">Claude Code</option>
+                    <option value="codex">Codex</option>
+                  </select>
+                </>
+              )}
               <button
                 type="button"
                 className="button"
@@ -291,7 +379,7 @@ function App() {
             {showSources && (
               <section className="sources" aria-label="来源设置">
                 <div className="section-title">
-                  <h2>读取哪些目录，由你决定</h2>
+                  <h2>已自动发现本机来源</h2>
                   <button
                     type="button"
                     className="icon-button"
@@ -301,7 +389,74 @@ function App() {
                     <X size={16} />
                   </button>
                 </div>
-                <p>选择客户端的 Skills 目录。只读取文件，不修改配置或运行 Skill。</p>
+                <p>自动检测 Claude Code 和 Codex 的常用目录。自定义位置和项目也可以添加。</p>
+                {discoveryIssues.length > 0 && (
+                  <details>
+                    <summary>{discoveryIssues.length} 条自动检测提示</summary>
+                    {discoveryIssues.map((issue) => (
+                      <div className="issue" key={`${issue.path}-${issue.code}-${issue.message}`}>
+                        <strong>{issue.code}</strong>
+                        <span>{issue.message}</span>
+                        <code>{issue.path}</code>
+                      </div>
+                    ))}
+                  </details>
+                )}
+                <div className="source-controls">
+                  <label className="management-check">
+                    <input
+                      type="checkbox"
+                      checked={automaticDiscovery}
+                      disabled={busy}
+                      onChange={(event) => {
+                        void window.koyori
+                          .setAutomaticDiscovery(event.target.checked)
+                          .then(refreshWorkspace)
+                          .catch(() => setError("无法保存自动发现设置。"));
+                      }}
+                    />
+                    启动时与运行期间自动检测
+                  </label>
+                  <button
+                    className="button"
+                    type="button"
+                    disabled={busy}
+                    onClick={() =>
+                      void window.koyori
+                        .discoverSources()
+                        .then(refreshWorkspace)
+                        .catch(() => setError("自动检测未完成。"))
+                    }
+                  >
+                    重新检测目录
+                  </button>
+                  <button
+                    className="text-button"
+                    type="button"
+                    disabled={busy}
+                    onClick={() =>
+                      void window.koyori
+                        .discoverSources(true)
+                        .then(refreshWorkspace)
+                        .catch(() => setError("无法恢复已忽略来源。"))
+                    }
+                  >
+                    重新发现已忽略目录
+                  </button>
+                  <button
+                    className="button"
+                    type="button"
+                    disabled={busy}
+                    onClick={() =>
+                      void window.koyori
+                        .addProject()
+                        .then(refreshWorkspace)
+                        .catch(() => setError("无法添加项目。"))
+                    }
+                  >
+                    关联项目
+                  </button>
+                </div>
                 <div className="source-controls">
                   <select
                     aria-label="添加来源的客户端"
@@ -344,7 +499,7 @@ function App() {
                     </button>
                   </div>
                 ))}
-                <small>移除来源只忘记这个位置，原文件不会被删除。添加后点击“扫描”。</small>
+                <small>移除后不会自动重新连接，原文件保留。需要时可重新发现已忽略目录。</small>
               </section>
             )}
             {error && (
@@ -392,104 +547,149 @@ function App() {
                 </button>
               </div>
             )}
-            <div className={detail ? "workspace with-detail" : "workspace"}>
-              <section className="inventory" aria-label="Skills 清单">
-                <div className="list-caption">
-                  <span>
-                    SKILLS <b>{skills.length}</b>
-                  </span>
-                  <span>{example ? "合成示例" : `${roots.length} 个已选来源`}</span>
-                </div>
-                {skills.length ? (
-                  <div className="skill-list">
-                    {skills.map((item) => (
-                      <button
-                        type="button"
-                        key={item.id}
-                        className={`skill-row ${selected === item.id ? "selected" : ""}`}
-                        onClick={() => setSelected(item.id)}
-                      >
-                        <span className="skill-symbol">
-                          <Layers3 size={20} />
-                        </span>
-                        <span className="skill-info">
-                          <strong>{item.name}</strong>
-                          <span>{item.description || "暂无描述，可打开查看原文。"}</span>
-                          <small>
-                            {names[item.client]}
-                            {item.isSymlink ? " · 链接资源" : ""}
-                          </small>
-                        </span>
-                        <span className="usage">
-                          使用情况<small>尚未采集</small>
-                        </span>
-                        <ChevronRight size={16} />
-                      </button>
-                    ))}
+            <div hidden={skillView !== "inventory"}>
+              <div className={detail ? "workspace with-detail" : "workspace"}>
+                <section className="inventory" aria-label="Skills 清单">
+                  <div className="list-caption">
+                    <span>
+                      SKILLS <b>{skills.length}</b>
+                    </span>
+                    <span>{example ? "合成示例" : `${roots.length} 个已连接来源`}</span>
                   </div>
-                ) : (
-                  <div className="empty">
-                    <div className="empty-symbol">
-                      <FolderPlus size={33} />
-                    </div>
-                    <h2>
-                      {query || filter !== "all"
-                        ? "没有匹配的 Skill"
-                        : current
-                          ? "这次没有发现 Skill"
-                          : "先把你的 Skills 带进来"}
-                    </h2>
-                    <p>
-                      {query || filter !== "all"
-                        ? "试试另一个关键词，或者切换客户端。"
-                        : current
-                          ? "检查来源目录和扫描提示。文件夹中需要有 SKILL.md。"
-                          : "连接 Claude Code 或 Codex 的资源目录。\n你可以先浏览，原文件会留在原处。"}
-                    </p>
-                    {!current && (
-                      <div className="empty-actions">
+                  {skills.length ? (
+                    <div className="skill-list">
+                      {skills.map((item) => (
                         <button
                           type="button"
-                          className="button primary"
-                          disabled={busy}
-                          onClick={() => setShowSources(true)}
+                          key={item.id}
+                          className={`skill-row ${selected === item.id ? "selected" : ""}`}
+                          onClick={() => setSelected(item.id)}
                         >
-                          <FolderPlus size={16} />
-                          连接本机资源
+                          <span className="skill-symbol">
+                            <Layers3 size={20} />
+                          </span>
+                          <span className="skill-info">
+                            <strong>{item.name}</strong>
+                            <span>{item.description || "暂无描述，可打开查看原文。"}</span>
+                            <small>
+                              {names[item.client]}
+                              {item.isSymlink ? " · 链接资源" : ""}
+                            </small>
+                          </span>
+                          <span className="usage">
+                            {example ? "使用情况" : `近 ${usage?.report.windowDays ?? 90} 天`}
+                            <small>
+                              {example
+                                ? "合成示例"
+                                : usageLabel(
+                                    usage?.report.skills.find((entry) => entry.skillId === item.id),
+                                  )}
+                            </small>
+                          </span>
+                          <ChevronRight size={16} />
                         </button>
-                        <button type="button" className="text-button" onClick={tryExample}>
-                          先看看示例 <ArrowUpRight size={14} />
-                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="empty">
+                      <div className="empty-symbol">
+                        <FolderPlus size={33} />
                       </div>
-                    )}
+                      <h2>
+                        {query || filter !== "all"
+                          ? "没有匹配的 Skill"
+                          : current
+                            ? "这次没有发现 Skill"
+                            : "正在发现本机 Skills"}
+                      </h2>
+                      <p>
+                        {query || filter !== "all"
+                          ? "试试另一个关键词，或者切换客户端。"
+                          : current
+                            ? "常用目录中暂未发现 Skill。可以添加自定义来源，或查看扫描提示。"
+                            : "正在检查 Claude Code 和 Codex 的常用目录。原文件会留在原处。"}
+                      </p>
+                      {(!current || current.skills.length === 0) && (
+                        <div className="empty-actions">
+                          <button
+                            type="button"
+                            className="button primary"
+                            disabled={busy}
+                            onClick={() => setShowSources(true)}
+                          >
+                            <FolderPlus size={16} />
+                            连接本机资源
+                          </button>
+                          <button type="button" className="text-button" onClick={tryExample}>
+                            先看看示例 <ArrowUpRight size={14} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <div className="inventory-footer">
+                    <ShieldCheck size={14} />
+                    <span>只读扫描 · 发现资源不代表客户端已经加载</span>
                   </div>
+                </section>
+                {detail && (
+                  <Detail
+                    skill={detail}
+                    usage={
+                      example
+                        ? undefined
+                        : usage?.report.skills.find((entry) => entry.skillId === detail.id)
+                    }
+                    close={() => setSelected(null)}
+                    manage={
+                      example
+                        ? undefined
+                        : () => {
+                            setManagementSkill(detail.id);
+                            setSkillView("manage");
+                          }
+                    }
+                  />
                 )}
-                <div className="inventory-footer">
-                  <ShieldCheck size={14} />
-                  <span>只读扫描 · 发现资源不代表客户端已经加载</span>
-                </div>
-              </section>
-              {detail && <Detail skill={detail} close={() => setSelected(null)} />}
+              </div>
+              {!example && inventory && (
+                <section className="scan-report">
+                  <p>
+                    最近扫描：{new Date(inventory.scannedAt).toLocaleString("zh-CN")} ·
+                    次数来自另行选择的会话目录，尚未连接时保留未知状态。
+                  </p>
+                  {inventory.issues.length > 0 && (
+                    <details>
+                      <summary>{inventory.issues.length} 条扫描提示</summary>
+                      {inventory.issues.map((issue) => (
+                        <div className="issue" key={`${issue.path}-${issue.code}-${issue.message}`}>
+                          <strong>{issue.code}</strong>
+                          <span>{issue.message}</span>
+                          <code>{issue.path}</code>
+                        </div>
+                      ))}
+                    </details>
+                  )}
+                </section>
+              )}
             </div>
-            {!example && inventory && (
-              <section className="scan-report">
-                <p>
-                  最近扫描：{new Date(inventory.scannedAt).toLocaleString("zh-CN")} ·
-                  使用账本尚未接入，次数不会显示为 0。
-                </p>
-                {inventory.issues.length > 0 && (
-                  <details>
-                    <summary>{inventory.issues.length} 条扫描提示</summary>
-                    {inventory.issues.map((issue) => (
-                      <div className="issue" key={`${issue.path}-${issue.code}-${issue.message}`}>
-                        <strong>{issue.code}</strong>
-                        <span>{issue.message}</span>
-                        <code>{issue.path}</code>
-                      </div>
-                    ))}
-                  </details>
-                )}
-              </section>
+            {!example && (
+              <div hidden={skillView !== "usage"}>
+                <CollectionPanel />
+                <UsagePanel inventory={inventory} roots={roots} onChange={setUsage} />
+              </div>
+            )}
+            {!example && (
+              <div hidden={skillView !== "manage"}>
+                <ManagementPanel
+                  inventory={inventory}
+                  targets={targets}
+                  initialSkillId={managementSkill}
+                  onChanged={() =>
+                    void refreshWorkspace().catch(() => setError("无法刷新资源状态。"))
+                  }
+                />
+              </div>
             )}
           </>
         ) : (
@@ -520,7 +720,17 @@ function App() {
     </div>
   );
 }
-function Detail({ skill, close }: { skill: SkillRecord; close: () => void }) {
+function Detail({
+  skill,
+  usage,
+  close,
+  manage,
+}: {
+  skill: SkillRecord;
+  usage?: SkillUsage;
+  close: () => void;
+  manage?: () => void;
+}) {
   return (
     <aside className="detail" aria-label="Skill 详情">
       <div className="section-title">
@@ -531,11 +741,16 @@ function Detail({ skill, close }: { skill: SkillRecord; close: () => void }) {
       </div>
       <h2>{skill.name}</h2>
       <p>{skill.description || "未提供描述"}</p>
+      {manage && (
+        <button className="button primary" type="button" onClick={manage}>
+          同步或备份这份 Skill <ChevronRight size={15} />
+        </button>
+      )}
       <dl>
         <dt>客户端</dt>
         <dd>{names[skill.client]}</dd>
         <dt>使用证据</dt>
-        <dd>尚未采集</dd>
+        <dd>{usageLabel(usage)}</dd>
         <dt>来源路径</dt>
         <dd className="path">{skill.path}</dd>
       </dl>
@@ -544,7 +759,7 @@ function Detail({ skill, close }: { skill: SkillRecord; close: () => void }) {
       </div>
       <pre>{skill.content}</pre>
       {skill.contentTruncated && <p className="muted">文件较大，仅显示前段内容。</p>}
-      <p className="detail-note">整理操作与 Agent 分析将在后续版本加入。当前不会改动这份文件。</p>
+      <p className="detail-note">浏览保持只读。同步与恢复会先展示计划，再由你确认。</p>
     </aside>
   );
 }
