@@ -402,7 +402,7 @@ function attributeEvent(
     sources
       .filter((source): source is HistorySource => source !== undefined)
       .filter((source) => source.client === event.client)
-      .map((source) => source.rootId),
+      .flatMap(sourceRootIds),
   );
   if (roots.size === 0) {
     return { kind: "unattributed", reason: "not-found", candidateIds: [] };
@@ -528,8 +528,12 @@ function suggestionCautions(
 
 function sourcesForSkill(sources: HistorySource[], skill: SkillRecord): HistorySource[] {
   return sources.filter(
-    (source) => source.rootId === skill.rootId && source.client === skill.client,
+    (source) => source.client === skill.client && sourceRootIds(source).includes(skill.rootId),
   );
+}
+
+function sourceRootIds(source: HistorySource): string[] {
+  return source.rootIds && source.rootIds.length > 0 ? source.rootIds : [source.rootId];
 }
 
 function coverageOverlaps(coverage: HistoryCoverage, sinceMs: number, nowMs: number): boolean {

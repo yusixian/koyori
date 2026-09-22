@@ -37,6 +37,7 @@ const clientNames = { "claude-code": "Claude Code", codex: "Codex" } as const;
 const dayMs = 24 * 60 * 60 * 1000;
 
 export function UsagePanel({ inventory, roots, onChange }: UsagePanelProps) {
+  const [revision, setRevision] = useState(0);
   const [windowDays, setWindowDays] = useState<WindowDays>(30);
   const [view, setView] = useState<UsageView | null>(null);
   const [busy, setBusy] = useState<BusyAction>("load");
@@ -52,6 +53,8 @@ export function UsagePanel({ inventory, roots, onChange }: UsagePanelProps) {
   const requestIdRef = useRef(0);
   const rootsSignature = roots.map((root) => `${root.id}:${root.client}:${root.path}`).join("|");
 
+  useEffect(() => window.koyori.onWorkspaceChanged(() => setRevision((value) => value + 1)), []);
+
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
@@ -60,6 +63,7 @@ export function UsagePanel({ inventory, roots, onChange }: UsagePanelProps) {
     // Scanning or changing roots can change the main-process attribution context.
     void inventory?.scannedAt;
     void rootsSignature;
+    void revision;
     const requestId = ++requestIdRef.current;
     setBusy("load");
     setError("");
@@ -80,7 +84,7 @@ export function UsagePanel({ inventory, roots, onChange }: UsagePanelProps) {
     return () => {
       if (requestId === requestIdRef.current) requestIdRef.current += 1;
     };
-  }, [windowDays, inventory?.scannedAt, rootsSignature]);
+  }, [windowDays, inventory?.scannedAt, rootsSignature, revision]);
 
   useEffect(() => {
     if (!view) return;

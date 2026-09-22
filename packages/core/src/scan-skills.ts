@@ -14,6 +14,11 @@ import type {
 const MAX_SKILL_BYTES = 256 * 1024;
 const MAX_DIRECTORY_DEPTH = 24;
 const MAX_DISCOVERED_ENTRIES = 10_000;
+const MANAGEMENT_WORK_DIRECTORY_PREFIXES = [
+  ".koyori-recovery-",
+  ".koyori-stage-",
+  ".koyori-displaced-",
+] as const;
 
 interface AuthorizedRoot {
   root: ResourceRoot;
@@ -76,6 +81,10 @@ function errorCode(error: unknown): string | undefined {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function isManagementWorkDirectory(name: string): boolean {
+  return MANAGEMENT_WORK_DIRECTORY_PREFIXES.some((prefix) => name.startsWith(prefix));
 }
 
 function sameFile(left: Stats, right: Stats): boolean {
@@ -329,6 +338,9 @@ async function walkDirectory(
     for await (const entry of directory) {
       if (checkCancelled(state, logicalDirectory)) {
         return;
+      }
+      if (isManagementWorkDirectory(entry.name)) {
+        continue;
       }
       state.entryCount += 1;
       if (state.entryCount > MAX_DISCOVERED_ENTRIES) {

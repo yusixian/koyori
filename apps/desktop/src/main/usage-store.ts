@@ -7,10 +7,20 @@ import type {
   HistorySource,
   SkillPreference,
   UsageEvent,
+  UsageImportCache,
   UsageIssue,
   UsageRules,
   UsageState,
 } from "@koyori/core";
+import { createUsageImportCache, isUsageImportCache } from "@koyori/core";
+
+export interface CollectionState {
+  version: 1;
+  enabled: boolean;
+  candidateIds: string[];
+  lastAttemptAt: string | null;
+  error: string | null;
+}
 
 function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -35,6 +45,12 @@ function isSource(value: unknown): value is HistorySource {
     record(value) &&
     text(value.id) &&
     text(value.rootId) &&
+    (value.rootIds === undefined ||
+      (Array.isArray(value.rootIds) &&
+        value.rootIds.length > 0 &&
+        value.rootIds.length <= 100 &&
+        value.rootIds.every(text) &&
+        new Set(value.rootIds).size === value.rootIds.length)) &&
     client(value.client) &&
     text(value.path) &&
     isAbsolute(value.path) &&
@@ -75,6 +91,7 @@ function isCoverage(value: unknown): value is HistoryCoverage {
     date(value.scannedAt) &&
     typeof value.readLimited === "boolean" &&
     integer(value.filesRead) &&
+    (value.cachedFiles === undefined || integer(value.cachedFiles)) &&
     integer(value.recordsRead) &&
     integer(value.malformedLines) &&
     integer(value.skippedFiles) &&
@@ -183,6 +200,85 @@ export async function writeUsageState(path: string, next: UsageState): Promise<v
       await copyFile(path, `${path}.bak`);
     } catch (error) {
       if (!record(error) || error.code !== "ENOENT") throw error;
+    }
+    await rename(temporary, path);
+  } finally {
+    await unlink(temporary).catch((error: unknown) => {
+      if (!record(error) || error.code !== "ENOENT") throw error;
+    });
+  }
+}
+
+export async function readUsageCache(path: string): Promise<UsageImportCache> {
+  try {
+    if ((await stat(path)).size > 64 * 1024 * 1024)
+      throw new Error("Usage cache exceeds the supported size and was ignored.");
+    const value: unknown = JSON.parse(await readFile(path, "utf8"));
+    if (!isUsageImportCache(value)) throw new Error("Usage cache has an invalid format.");
+    return value;
+  } catch (error) {
+    if (record(error) && error.code === "ENOENT") return createUsageImportCache();
+    throw error;
+  }
+}
+
+export async function writeUsageCache(path: string, next: UsageImportCache): Promise<void> {
+  if (!isUsageImportCache(next))
+    throw new Error("Invalid usage cache; previous cache was preserved.");
+  await writePrivateJson(path, JSON.stringify(next));
+}
+
+export function createCollectionState(): CollectionState {
+  return { version: 1, enabled: false, candidateIds: [], lastAttemptAt: null, error: null };
+}
+
+function isCollectionState(value: unknown): value is CollectionState {
+  return (
+    record(value) &&
+    value.version === 1 &&
+    typeof value.enabled === "boolean" &&
+    Array.isArray(value.candidateIds) &&
+    value.candidateIds.length <= 100 &&
+    value.candidateIds.every(text) &&
+    nullableDate(value.lastAttemptAt) &&
+    (value.error === null || text(value.error))
+  );
+}
+
+export async function readCollectionState(path: string): Promise<CollectionState> {
+  try {
+    if ((await stat(path)).size > 1024 * 1024)
+      throw new Error("Collection settings exceed the supported size; they were preserved.");
+    const value: unknown = JSON.parse(await readFile(path, "utf8"));
+    if (!isCollectionState(value))
+      throw new Error("Collection settings have an unsupported format; they were preserved.");
+    return value;
+  } catch (error) {
+    if (record(error) && error.code === "ENOENT") return createCollectionState();
+    throw error;
+  }
+}
+
+export async function writeCollectionState(path: string, next: CollectionState): Promise<void> {
+  if (!isCollectionState(next))
+    throw new Error("Invalid collection settings; previous settings were preserved.");
+  await writePrivateJson(path, JSON.stringify(next));
+}
+
+async function writePrivateJson(path: string, serialized: string): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  const temporary = `${path}.${randomUUID()}.tmp`;
+  try {
+    const handle = await open(
+      temporary,
+      constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY,
+      0o600,
+    );
+    try {
+      await handle.writeFile(serialized, "utf8");
+      await handle.sync();
+    } finally {
+      await handle.close();
     }
     await rename(temporary, path);
   } finally {

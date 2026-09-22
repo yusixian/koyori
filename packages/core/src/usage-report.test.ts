@@ -270,6 +270,47 @@ describe("usage ledger aggregation", () => {
     ]);
   });
 
+  it("attributes one profile history source across roots only when the skill name is unique", () => {
+    const sharedSource: HistorySource = {
+      ...source("profile-history", "root-a"),
+      rootIds: ["root-a", "root-b"],
+    };
+    const base: UsageState = {
+      ...createUsageState(),
+      sources: [sharedSource],
+      coverage: [coverage("profile-history")],
+      events: [
+        event("unique-call", "unique", "profile-history"),
+        event("shared-call", "shared", "profile-history"),
+      ],
+    };
+    const report = buildUsageReport(
+      inventory([
+        skill("unique-a", "unique", "root-a"),
+        skill("shared-a", "shared", "root-a"),
+        skill("shared-b", "shared", "root-b"),
+      ]),
+      base,
+      { now: NOW, windowDays: 30 },
+    );
+
+    expect(report.skills.find((item) => item.skillId === "unique-a")).toMatchObject({
+      status: "observed",
+      calls: 1,
+    });
+    expect(report.skills.find((item) => item.skillId === "shared-a")).toMatchObject({
+      status: "ambiguous",
+      calls: 0,
+    });
+    expect(report.skills.find((item) => item.skillId === "shared-b")).toMatchObject({
+      status: "ambiguous",
+      calls: 0,
+    });
+    expect(report.unattributed).toEqual([
+      expect.objectContaining({ skillName: "shared", reason: "ambiguous", calls: 1 }),
+    ]);
+  });
+
   it("distinguishes selected-record zero from unsupported or null coverage", () => {
     const state: UsageState = {
       ...createUsageState(),

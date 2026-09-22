@@ -12,13 +12,17 @@ import {
   scanSkills,
 } from "@koyori/core";
 
+import { MANAGEMENT_HELP, runManagementCli } from "./management-cli";
+
 const HELP = `Usage:
   koyori scan --client <claude-code|codex> --root <path> [--root <path> ...]
   koyori usage --client <claude-code|codex> --root <path> --history <path> [--history <path> ...] [--days <30|90>]
   koyori suggest --client <claude-code|codex> --root <path> --history <path> [--history <path> ...] [--days <30|90>]
   koyori --help
 
-All commands are read-only. usage and suggest build a temporary in-memory ledger from the
+${MANAGEMENT_HELP}
+
+scan, usage and suggest are read-only. usage and suggest build a temporary in-memory ledger from the
 selected Skill root and history directories; coverage may still be incomplete.`;
 
 interface ParsedScanArgs {
@@ -134,6 +138,8 @@ export async function runCli(
     stderr: process.stderr,
   },
 ): Promise<number> {
+  if (["discover", "sync", "backup", "backups", "restore"].includes(args[0] ?? ""))
+    return runManagementCli(args, io);
   let parsed: ParsedArgs;
   try {
     parsed = parseArgs(args);

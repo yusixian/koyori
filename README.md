@@ -10,7 +10,7 @@ Koyori 是自用优先、从首版按开源方式建设的 AI Native 个人工�
 
 ## 当前状态
 
-**工程起点已可运行，尚无公开发行版。** 桌面工作台、只读 Skills 核心、CLI、独立文档站与本地候选包已建立。现已加入 Claude Code 本机历史导入、可追溯调用统计和规则/复查偏好。整理写入、模型/Bot 连接和语音仍未实现；验收证据与后续范围见 [实施状态](docs/implementation-status.md)。
+**开发版的 Skills 自用闭环已可运行，尚无公开发行版。** 桌面端会自动发现 Claude Code 与 Codex 的常用 Skills 目录，支持完整目录同步、本地快照和冲突复核；Claude Code 使用证据可在用户开启后增量更新。Git 远端备份支持明确选择后上传、取回历史与自动重试，已通过隔离仓库验收。CLI、独立文档站与本地候选包已经建立；模型/Bot 连接和语音仍未实现。证据与后续范围见 [实施状态](docs/implementation-status.md)。
 
 ## 本地开发
 
@@ -22,7 +22,7 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-`pnpm dev:site` 启动独立文档站；`pnpm koyori --help` 查看只读 CLI。首次使用只读取你通过目录选择器选定的资源。开发与检查命令见 [贡献指南](CONTRIBUTING.md)，当前结果与下一步见 [实施状态](docs/implementation-status.md)。
+`pnpm dev:site` 启动独立文档站；`pnpm koyori --help` 查看 CLI。首次启动会检测 Claude Code 与 Codex 的已知目录；项目目录只在你登记项目后检查，系统目录保持只读。同步和恢复始终先预览计划，使用统计默认关闭。开发与检查命令见 [贡献指南](CONTRIBUTING.md)，当前结果与下一步见 [实施状态](docs/implementation-status.md)。
 
 ## 计划管理什么
 
@@ -34,7 +34,7 @@ pnpm dev
 | 指令与文档 | 扫描全局、项目及嵌套 AGENTS.md / CLAUDE.md，以及项目 Markdown |
 | Agent 与 CLI | 原生对话、自配模型或个人 Bot 连接、明确偏好与可审阅操作卡；CLI 共用核心查询/计划，ACP 后续评估 |
 
-自动化先做启动扫描、目录监听与变更收件箱。已加入 Claude Code Skills 调用统计、证据覆盖与规则/到期复查；首版扩大草案加入 Agent，基于用户选定的资源和摘要解释建议。推荐不会直接触发删除。
+自动发现会在启动和运行期间检查已知目录；用户开启后，Claude Code Skills 使用证据随检查增量更新，并保留覆盖、规则与到期复查。同步、恢复和本地快照已经使用同一套计划与 revision 边界；首版扩大草案加入 Agent，基于用户选定的资源和摘要解释建议。推荐不会直接触发删除。
 
 ## MVP 路线
 
@@ -62,6 +62,7 @@ pnpm dev
 - [0.1 MVP 审阅草案](docs/design/mvp-0.1.0.md)：界面草图、首版边界、验收、发布和 Sol 编码分工。
 - [个人 Agent 与 Bot 接入](docs/design/personal-agent.md)：角色、记忆、语音候选与私有服务接入边界。
 - [Skills Manager 参考](docs/design/skills-manager-reference.md)：实现/兼容性调研、选择性复用与许可要求。
+- [Skills 发现、同步与备份](apps/site/content/docs/skills-management.mdx)：自动检测范围、安全同步、本地快照与恢复。
 - [使用统计指南](apps/site/content/docs/skill-usage.mdx) · [账本实现与限制](docs/design/usage-ledger.md)。
 - [Skills 使用统计与整理建议](docs/skill-lifecycle.md)：调用证据、闲置规则、到期提醒与 AI 推荐候选。
 - [架构与数据](docs/architecture.md)：核心进程、领域模型、SQLite、缓存与恢复。

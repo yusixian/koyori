@@ -3,6 +3,18 @@ import { constants, type Dir, type Stats } from "node:fs";
 import { lstat, open, opendir, realpath, stat } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 
+import {
+  boundUsageImportCache,
+  createUsageImportCache,
+  isUsageImportCache,
+  sameUsageFileFingerprint,
+  type UsageCachedParsedFile,
+  type UsageFileCacheEntry,
+  type UsageImportCache,
+  usageFileCacheKey,
+  usageFileFingerprint,
+} from "./usage-cache.ts";
+
 import type {
   HistoryCoverage,
   HistorySource,
@@ -115,9 +127,16 @@ interface ImportState {
   conflictIssues: Set<string>;
   identityIssues: Set<string>;
   diagnosticLimitReached: boolean;
+  cache: CacheRuntime | null;
+}
+
+interface CacheRuntime {
+  previous: UsageImportCache;
+  next: Map<string, UsageFileCacheEntry>;
 }
 
 interface ParsedFile {
+  reservedRecords: number;
   recordsRead: number;
   malformedLines: number;
   messageRecords: number;
@@ -153,6 +172,13 @@ interface ParsedFile {
 interface ReadSnapshot {
   opened: Stats;
   grew: boolean;
+}
+
+interface ReadFileResult {
+  parsed: ParsedFile;
+  snapshot: ReadSnapshot;
+  cacheKey?: string;
+  cacheEntry?: UsageFileCacheEntry;
 }
 
 function stableHash(...parts: string[]): string {
@@ -376,6 +402,7 @@ function strictCommandName(
 
 function emptyParsedFile(): ParsedFile {
   return {
+    reservedRecords: 0,
     recordsRead: 0,
     malformedLines: 0,
     messageRecords: 0,
@@ -386,6 +413,38 @@ function emptyParsedFile(): ParsedFile {
     requests: [],
     results: [],
     limitations: new Set(),
+  };
+}
+
+function cachedParsedFile(parsed: ParsedFile): UsageCachedParsedFile {
+  return {
+    reservedRecords: parsed.reservedRecords,
+    recordsRead: parsed.recordsRead,
+    malformedLines: parsed.malformedLines,
+    messageRecords: parsed.messageRecords,
+    clientVersions: [...parsed.clientVersions].sort(),
+    firstRecord: parsed.firstRecord ? { ...parsed.firstRecord } : null,
+    lastRecord: parsed.lastRecord ? { ...parsed.lastRecord } : null,
+    calls: parsed.calls.map((entry) => ({ ...entry, evidence: { ...entry.evidence } })),
+    requests: parsed.requests.map((entry) => ({ ...entry, evidence: { ...entry.evidence } })),
+    results: parsed.results.map((entry) => ({ ...entry, evidence: { ...entry.evidence } })),
+    limitations: [...parsed.limitations].sort(),
+  };
+}
+
+function parsedFileFromCache(parsed: UsageCachedParsedFile): ParsedFile {
+  return {
+    reservedRecords: parsed.reservedRecords,
+    recordsRead: parsed.recordsRead,
+    malformedLines: parsed.malformedLines,
+    messageRecords: parsed.messageRecords,
+    clientVersions: new Set(parsed.clientVersions),
+    firstRecord: parsed.firstRecord ? { ...parsed.firstRecord } : null,
+    lastRecord: parsed.lastRecord ? { ...parsed.lastRecord } : null,
+    calls: parsed.calls.map((entry) => ({ ...entry, evidence: { ...entry.evidence } })),
+    requests: parsed.requests.map((entry) => ({ ...entry, evidence: { ...entry.evidence } })),
+    results: parsed.results.map((entry) => ({ ...entry, evidence: { ...entry.evidence } })),
+    limitations: new Set(parsed.limitations),
   };
 }
 
@@ -568,6 +627,7 @@ async function readLines(
     if (!reserveRecord(state, source, coverage, file, line)) {
       return;
     }
+    parsed.reservedRecords += 1;
     if (oversized) {
       coverage.coverage.readLimited = true;
       pushIssue(
@@ -672,7 +732,7 @@ async function openAndReadFile(
   source: HistorySource,
   coverage: CoverageState,
   logicalPath: string,
-): Promise<{ parsed: ParsedFile; snapshot: ReadSnapshot } | null> {
+): Promise<ReadFileResult | null> {
   const file = portableRelative(coverage.rootAbsolutePath, logicalPath);
   throwIfAborted(state.options.signal);
   let beforeReal: string;
@@ -751,6 +811,51 @@ async function openAndReadFile(
     return null;
   }
 
+  const fingerprint = usageFileFingerprint(beforeStats);
+  const cacheKey = coverage.rootRealPath
+    ? usageFileCacheKey(source.id, source.client, coverage.rootRealPath, file)
+    : undefined;
+  const cached = cacheKey ? state.cache?.previous.files[cacheKey] : undefined;
+  if (
+    cached &&
+    coverage.rootRealPath &&
+    cached.sourceId === source.id &&
+    cached.client === source.client &&
+    cached.rootPath === coverage.rootRealPath &&
+    cached.file === file &&
+    sameUsageFileFingerprint(cached.fingerprint, fingerprint)
+  ) {
+    if (state.budget.records + cached.parsed.reservedRecords > MAX_RECORDS) {
+      state.budget.stopped = true;
+      coverage.coverage.readLimited = true;
+      coverage.coverage.skippedFiles += 1;
+      coverage.limitations.add("The history import stopped at the record limit.");
+      pushIssue(
+        state,
+        issue(source.id, "limit", "History import record limit was reached.", file),
+        coverage,
+      );
+      return null;
+    }
+    state.budget.files += 1;
+    state.budget.bytes += beforeStats.size;
+    state.budget.records += cached.parsed.reservedRecords;
+    coverage.coverage.cachedFiles = (coverage.coverage.cachedFiles ?? 0) + 1;
+    if (cached.issues.some((entry) => entry.code !== "identity")) {
+      coverage.coverage.readLimited = true;
+    }
+    for (const cachedIssue of cached.issues) {
+      pushIssue(state, { ...cachedIssue }, coverage);
+      if (state.budget.stopped) return null;
+    }
+    return {
+      parsed: parsedFileFromCache(cached.parsed),
+      snapshot: { opened: beforeStats, grew: false },
+      cacheKey,
+      cacheEntry: cached,
+    };
+  }
+
   const noFollow = "O_NOFOLLOW" in constants ? constants.O_NOFOLLOW : 0;
   let handle: Awaited<ReturnType<typeof open>> | null = null;
   try {
@@ -781,6 +886,7 @@ async function openAndReadFile(
     state.budget.files += 1;
     state.budget.bytes += opened.size;
     const parsed = emptyParsedFile();
+    const issueStart = state.issues.length;
     await readLines(
       handle,
       opened.size,
@@ -813,7 +919,24 @@ async function openAndReadFile(
       coverage.coverage.skippedFiles += 1;
       return null;
     }
-    return { parsed, snapshot: { opened, grew: afterReadHandle.size > opened.size } };
+    const grew = afterReadHandle.size > opened.size;
+    const cacheEntry =
+      state.cache && cacheKey && coverage.rootRealPath && !grew && !state.budget.stopped
+        ? {
+            sourceId: source.id,
+            client: source.client,
+            rootPath: coverage.rootRealPath,
+            file,
+            fingerprint: usageFileFingerprint(opened),
+            parsed: cachedParsedFile(parsed),
+            issues: state.issues.slice(issueStart).map((entry) => ({ ...entry })),
+          }
+        : undefined;
+    return {
+      parsed,
+      snapshot: { opened, grew },
+      ...(cacheKey && cacheEntry ? { cacheKey, cacheEntry } : {}),
+    };
   } catch (error) {
     throwIfAborted(state.options.signal);
     const code = errorCode(error);
@@ -1139,6 +1262,9 @@ async function walkHistory(
         );
       }
       mergeParsedFile(state, source, coverage, read.parsed);
+      if (!state.budget.stopped && read.cacheKey && read.cacheEntry) {
+        state.cache?.next.set(read.cacheKey, read.cacheEntry);
+      }
     }
   } finally {
     await directory.close().catch(() => undefined);
@@ -1352,10 +1478,11 @@ function finalEvents(state: ImportState): UsageEvent[] {
   );
 }
 
-export async function importUsage(
+async function importUsageInternal(
   sources: HistorySource[],
-  options: UsageImportOptions = {},
-): Promise<UsageImport> {
+  previousCache: UsageImportCache | null,
+  options: UsageImportOptions,
+): Promise<{ imported: UsageImport; cache: UsageImportCache | null }> {
   throwIfAborted(options.signal);
   const scannedAt = options.now ?? new Date().toISOString();
   const state: ImportState = {
@@ -1367,6 +1494,13 @@ export async function importUsage(
     conflictIssues: new Set(),
     identityIssues: new Set(),
     diagnosticLimitReached: false,
+    cache:
+      previousCache === null
+        ? null
+        : {
+            previous: isUsageImportCache(previousCache) ? previousCache : createUsageImportCache(),
+            next: new Map(),
+          },
   };
   const coverage: HistoryCoverage[] = [];
 
@@ -1383,5 +1517,26 @@ export async function importUsage(
   }
 
   const events = finalEvents(state);
-  return { events, coverage, issues: state.issues };
+  throwIfAborted(options.signal);
+  return {
+    imported: { events, coverage, issues: state.issues },
+    cache: state.cache ? boundUsageImportCache(state.cache.next) : null,
+  };
+}
+
+export async function importUsage(
+  sources: HistorySource[],
+  options: UsageImportOptions = {},
+): Promise<UsageImport> {
+  return (await importUsageInternal(sources, null, options)).imported;
+}
+
+export async function importUsageIncremental(
+  sources: HistorySource[],
+  previousCache: UsageImportCache = createUsageImportCache(),
+  options: UsageImportOptions = {},
+): Promise<{ imported: UsageImport; cache: UsageImportCache }> {
+  const result = await importUsageInternal(sources, previousCache, options);
+  if (!result.cache) throw new Error("Incremental usage import did not produce a cache.");
+  return { imported: result.imported, cache: result.cache };
 }

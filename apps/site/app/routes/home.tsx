@@ -29,7 +29,7 @@ export default function HomePage() {
             <span>整理成自己的工作台。</span>
           </h1>
           <p className="hero-lead">
-            Koyori 从 Skills 与个人 Agent 起步，面向 macOS，帮助你看清来源、作用域和变更，再决定如何使用与整理。
+            Koyori 从 Skills 与个人 Agent 起步，面向 macOS，帮助你自动发现本机能力、看清使用证据，再安全同步与恢复。
           </p>
           <div className="hero-actions">
             <Link className="button button-primary" to="/docs">
@@ -57,10 +57,10 @@ export default function HomePage() {
         <div className="section-wrap status-grid">
           <div>
             <p className="eyebrow">Current stage</p>
-            <h2 id="now-title">只读 Skills 工作台已可运行</h2>
+            <h2 id="now-title">Skills 自用闭环正在成形</h2>
           </div>
           <p>
-            已支持选择目录、扫描、筛选和预览，并加入 Claude Code 本机调用统计与复查偏好。整理写入与个人 Agent 接入继续迭代；当前尚无公开发行版。
+            开发版已支持自动发现 Claude Code 与 Codex Skills、完整目录同步和本地恢复快照；Claude Code 使用证据可在开启后持续更新。个人 Agent 与公开发行仍在推进。
           </p>
         </div>
       </section>
@@ -85,11 +85,12 @@ export default function HomePage() {
         <div>
           <p className="eyebrow">Start here</p>
           <h2 id="route-title">先从真实状态开始</h2>
-          <p>安装、开发和安全文档已经建立；功能使用指南会在对应能力实现并验证后加入。</p>
+          <p>从自动发现开始，先核对同步计划和兼容提示，再用本地快照保护每次替换。</p>
         </div>
         <div className="route-links">
+          <Link to="/docs/skills-management">管理 Skills <span>↗</span></Link>
+          <Link to="/docs/skill-usage">查看使用证据 <span>↗</span></Link>
           <Link to="/docs/installation">安装状态 <span>↗</span></Link>
-          <Link to="/docs/development">本地开发 <span>↗</span></Link>
           <Link to="/docs/security">安全与数据 <span>↗</span></Link>
         </div>
       </section>

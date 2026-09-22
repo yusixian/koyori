@@ -1,9 +1,20 @@
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  appendFile,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rename,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { importUsage } from "./import-usage.ts";
+import { importUsage, importUsageIncremental } from "./import-usage.ts";
+import { isUsageImportCache } from "./usage-cache.ts";
+import { createUsageState, mergeUsageImport } from "./usage-report.ts";
 import type { HistorySource } from "./usage-types.ts";
 
 const temporaryDirectories: string[] = [];
@@ -366,5 +377,103 @@ describe("importUsage", () => {
     expect(imported.coverage[0]).toEqual(
       expect.objectContaining({ readLimited: true, malformedLines: 1_000 }),
     );
+  });
+});
+
+describe("importUsageIncremental", () => {
+  it("reuses unchanged files while retaining their events and coverage", async () => {
+    const root = await temporaryDirectory();
+    await writeJsonl(root, "session.jsonl", [skillCall({ id: "cached-call" })]);
+
+    const first = await importUsageIncremental([source(root)]);
+    const second = await importUsageIncremental([source(root)], first.cache);
+
+    expect(first.imported.events).toEqual([
+      expect.objectContaining({ skillName: "sample-skill", status: "unresolved" }),
+    ]);
+    expect(second.imported.events).toEqual(first.imported.events);
+    expect(second.imported.coverage[0]).toEqual(
+      expect.objectContaining({ filesRead: 1, recordsRead: 1, cachedFiles: 1 }),
+    );
+    expect(isUsageImportCache(second.cache)).toBe(true);
+    expect(JSON.stringify(second.cache)).not.toContain("must not escape");
+  });
+
+  it("reparses an append so a late tool result upgrades the cached invocation", async () => {
+    const root = await temporaryDirectory();
+    const path = await writeJsonl(root, "session.jsonl", [skillCall({ id: "late-result" })]);
+    const first = await importUsageIncremental([source(root)]);
+
+    await appendFile(path, `${JSON.stringify(toolResult("late-result"))}\n`, "utf8");
+    const second = await importUsageIncremental([source(root)], first.cache);
+    const third = await importUsageIncremental([source(root)], second.cache);
+
+    expect(second.imported.events).toEqual([
+      expect.objectContaining({ skillName: "sample-skill", status: "loaded" }),
+    ]);
+    expect(second.imported.coverage[0]).toEqual(expect.objectContaining({ recordsRead: 2 }));
+    expect(second.imported.coverage[0]?.cachedFiles).toBeUndefined();
+    expect(third.imported.events).toEqual(second.imported.events);
+    expect(third.imported.coverage[0]).toEqual(expect.objectContaining({ cachedFiles: 1 }));
+  });
+
+  it("handles truncation and rotation without dropping earlier ledger events", async () => {
+    const root = await temporaryDirectory();
+    const path = await writeJsonl(root, "session.jsonl", [
+      skillCall({ id: "before-rotate", skill: "older-skill" }),
+      toolResult("before-rotate"),
+    ]);
+    const first = await importUsageIncremental([source(root)]);
+    let ledger = mergeUsageImport(createUsageState(), first.imported, "2026-09-21T00:00:00.000Z");
+
+    await writeJsonl(root, "session.jsonl", [
+      skillCall({ id: "after-truncate", skill: "newer-skill" }),
+    ]);
+    const truncated = await importUsageIncremental([source(root)], first.cache);
+    ledger = mergeUsageImport(ledger, truncated.imported, "2026-09-22T00:00:00.000Z");
+    expect(ledger.events.map((event) => event.skillName).sort()).toEqual([
+      "newer-skill",
+      "older-skill",
+    ]);
+
+    await rename(path, join(root, "rotated.jsonl"));
+    await writeJsonl(root, "session.jsonl", [
+      skillCall({ id: "after-rotate", skill: "rotated-skill" }),
+    ]);
+    const rotated = await importUsageIncremental([source(root)], truncated.cache);
+    ledger = mergeUsageImport(ledger, rotated.imported, "2026-09-23T00:00:00.000Z");
+    expect(ledger.events.map((event) => event.skillName).sort()).toEqual([
+      "newer-skill",
+      "older-skill",
+      "rotated-skill",
+    ]);
+  });
+
+  it("replays cached malformed diagnostics without retaining line content", async () => {
+    const root = await temporaryDirectory();
+    await writeJsonl(root, "bad.jsonl", ["{private-bad-line}", skillCall({ id: "valid" })]);
+    const first = await importUsageIncremental([source(root)]);
+    const second = await importUsageIncremental([source(root)], first.cache);
+
+    expect(second.imported.events).toHaveLength(1);
+    expect(second.imported.issues).toEqual(first.imported.issues);
+    expect(second.imported.coverage[0]).toEqual(
+      expect.objectContaining({ malformedLines: 1, readLimited: true, cachedFiles: 1 }),
+    );
+    expect(JSON.stringify(second.cache)).not.toContain("private-bad-line");
+  });
+
+  it("does not mutate or replace the previous cache when cancelled", async () => {
+    const root = await temporaryDirectory();
+    await writeJsonl(root, "session.jsonl", [skillCall({ id: "cancelled" })]);
+    const first = await importUsageIncremental([source(root)]);
+    const before = JSON.stringify(first.cache);
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      importUsageIncremental([source(root)], first.cache, { signal: controller.signal }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(JSON.stringify(first.cache)).toBe(before);
   });
 });

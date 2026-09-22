@@ -1,5 +1,6 @@
 import type {
   ClientId,
+  DiscoveryIssue,
   ResourceRoot,
   SkillInventory,
   SkillRecord,
@@ -21,11 +22,13 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import logo from "../../../../brand/logo.png";
-import type {} from "../bridge";
+import type { SourceTarget } from "../bridge";
 import "./style.css";
+import { CollectionPanel } from "./CollectionPanel";
+import { ManagementPanel } from "./ManagementPanel";
 import { UsagePanel } from "./UsagePanel";
 
 type Page = "skills" | "agent" | "services";
@@ -81,6 +84,10 @@ const sample: SkillInventory = {
 function App() {
   const [page, setPage] = useState<Page>("skills");
   const [roots, setRoots] = useState<ResourceRoot[]>([]);
+  const [targets, setTargets] = useState<SourceTarget[]>([]);
+  const [automaticDiscovery, setAutomaticDiscovery] = useState(true);
+  const [discoveryIssues, setDiscoveryIssues] = useState<DiscoveryIssue[]>([]);
+  const [managementSkill, setManagementSkill] = useState<string | null>(null);
   const [inventory, setInventory] = useState<SkillInventory | null>(null);
   const [example, setExample] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
@@ -91,13 +98,47 @@ function App() {
   const [error, setError] = useState("");
   const [showSources, setShowSources] = useState(false);
   const [usage, setUsage] = useState<UsageView | null>(null);
-  const [skillView, setSkillView] = useState<"inventory" | "usage">("inventory");
+  const [skillView, setSkillView] = useState<"inventory" | "usage" | "manage">("inventory");
+  const workspaceRequestRef = useRef(0);
   useEffect(() => {
-    window.koyori
-      .getRoots()
-      .then(setRoots)
-      .catch(() => setError("来源设置读取失败，请重启后重试。"));
+    let disposed = false;
+    const update = () => {
+      const requestId = ++workspaceRequestRef.current;
+      void window.koyori
+        .getWorkspace()
+        .then((view) => {
+          if (disposed || requestId !== workspaceRequestRef.current) return;
+          setRoots(view.roots);
+          setTargets(view.targets);
+          setAutomaticDiscovery(view.automaticDiscovery);
+          setDiscoveryIssues(view.discoveryIssues);
+          setInventory(view.inventory);
+          setBusy(view.busy);
+          if (view.error) setError(view.error);
+        })
+        .catch(() => {
+          if (!disposed && requestId === workspaceRequestRef.current)
+            setError("来源设置读取失败，请重启后重试。");
+        });
+    };
+    update();
+    const unsubscribe = window.koyori.onWorkspaceChanged(update);
+    return () => {
+      disposed = true;
+      workspaceRequestRef.current += 1;
+      unsubscribe();
+    };
   }, []);
+  async function refreshWorkspace() {
+    const requestId = ++workspaceRequestRef.current;
+    const view = await window.koyori.getWorkspace();
+    if (requestId !== workspaceRequestRef.current) return;
+    setRoots(view.roots);
+    setTargets(view.targets);
+    setInventory(view.inventory);
+    setAutomaticDiscovery(view.automaticDiscovery);
+    setDiscoveryIssues(view.discoveryIssues);
+  }
   const current = example ? sample : inventory;
   const skills = useMemo(
     () =>
@@ -130,9 +171,8 @@ function App() {
     try {
       const root = await window.koyori.addRoot(client);
       if (root) {
-        setRoots(await window.koyori.getRoots());
+        await refreshWorkspace();
         setExample(false);
-        setInventory(null);
         setSelected(null);
         setShowSources(true);
       }
@@ -146,8 +186,8 @@ function App() {
     setBusy(true);
     setError("");
     try {
-      setRoots(await window.koyori.removeRoot(id));
-      setInventory(null);
+      await window.koyori.removeRoot(id);
+      await refreshWorkspace();
       setSelected(null);
     } catch {
       setError("来源移除失败，请稍后重试。");
@@ -279,6 +319,13 @@ function App() {
                 >
                   使用与建议
                 </button>
+                <button
+                  type="button"
+                  aria-pressed={skillView === "manage"}
+                  onClick={() => setSkillView("manage")}
+                >
+                  同步与备份
+                </button>
               </nav>
             )}
             <div className="toolbar">
@@ -332,7 +379,7 @@ function App() {
             {showSources && (
               <section className="sources" aria-label="来源设置">
                 <div className="section-title">
-                  <h2>读取哪些目录，由你决定</h2>
+                  <h2>已自动发现本机来源</h2>
                   <button
                     type="button"
                     className="icon-button"
@@ -342,7 +389,74 @@ function App() {
                     <X size={16} />
                   </button>
                 </div>
-                <p>选择客户端的 Skills 目录。只读取文件，不修改配置或运行 Skill。</p>
+                <p>自动检测 Claude Code 和 Codex 的常用目录。自定义位置和项目也可以添加。</p>
+                {discoveryIssues.length > 0 && (
+                  <details>
+                    <summary>{discoveryIssues.length} 条自动检测提示</summary>
+                    {discoveryIssues.map((issue) => (
+                      <div className="issue" key={`${issue.path}-${issue.code}-${issue.message}`}>
+                        <strong>{issue.code}</strong>
+                        <span>{issue.message}</span>
+                        <code>{issue.path}</code>
+                      </div>
+                    ))}
+                  </details>
+                )}
+                <div className="source-controls">
+                  <label className="management-check">
+                    <input
+                      type="checkbox"
+                      checked={automaticDiscovery}
+                      disabled={busy}
+                      onChange={(event) => {
+                        void window.koyori
+                          .setAutomaticDiscovery(event.target.checked)
+                          .then(refreshWorkspace)
+                          .catch(() => setError("无法保存自动发现设置。"));
+                      }}
+                    />
+                    启动时与运行期间自动检测
+                  </label>
+                  <button
+                    className="button"
+                    type="button"
+                    disabled={busy}
+                    onClick={() =>
+                      void window.koyori
+                        .discoverSources()
+                        .then(refreshWorkspace)
+                        .catch(() => setError("自动检测未完成。"))
+                    }
+                  >
+                    重新检测目录
+                  </button>
+                  <button
+                    className="text-button"
+                    type="button"
+                    disabled={busy}
+                    onClick={() =>
+                      void window.koyori
+                        .discoverSources(true)
+                        .then(refreshWorkspace)
+                        .catch(() => setError("无法恢复已忽略来源。"))
+                    }
+                  >
+                    重新发现已忽略目录
+                  </button>
+                  <button
+                    className="button"
+                    type="button"
+                    disabled={busy}
+                    onClick={() =>
+                      void window.koyori
+                        .addProject()
+                        .then(refreshWorkspace)
+                        .catch(() => setError("无法添加项目。"))
+                    }
+                  >
+                    关联项目
+                  </button>
+                </div>
                 <div className="source-controls">
                   <select
                     aria-label="添加来源的客户端"
@@ -385,7 +499,7 @@ function App() {
                     </button>
                   </div>
                 ))}
-                <small>移除来源只忘记这个位置，原文件不会被删除。添加后点击“扫描”。</small>
+                <small>移除后不会自动重新连接，原文件保留。需要时可重新发现已忽略目录。</small>
               </section>
             )}
             {error && (
@@ -440,7 +554,7 @@ function App() {
                     <span>
                       SKILLS <b>{skills.length}</b>
                     </span>
-                    <span>{example ? "合成示例" : `${roots.length} 个已选来源`}</span>
+                    <span>{example ? "合成示例" : `${roots.length} 个已连接来源`}</span>
                   </div>
                   {skills.length ? (
                     <div className="skill-list">
@@ -486,16 +600,16 @@ function App() {
                           ? "没有匹配的 Skill"
                           : current
                             ? "这次没有发现 Skill"
-                            : "先把你的 Skills 带进来"}
+                            : "正在发现本机 Skills"}
                       </h2>
                       <p>
                         {query || filter !== "all"
                           ? "试试另一个关键词，或者切换客户端。"
                           : current
-                            ? "检查来源目录和扫描提示。文件夹中需要有 SKILL.md。"
-                            : "连接 Claude Code 或 Codex 的资源目录。\n你可以先浏览，原文件会留在原处。"}
+                            ? "常用目录中暂未发现 Skill。可以添加自定义来源，或查看扫描提示。"
+                            : "正在检查 Claude Code 和 Codex 的常用目录。原文件会留在原处。"}
                       </p>
-                      {!current && (
+                      {(!current || current.skills.length === 0) && (
                         <div className="empty-actions">
                           <button
                             type="button"
@@ -527,6 +641,14 @@ function App() {
                         : usage?.report.skills.find((entry) => entry.skillId === detail.id)
                     }
                     close={() => setSelected(null)}
+                    manage={
+                      example
+                        ? undefined
+                        : () => {
+                            setManagementSkill(detail.id);
+                            setSkillView("manage");
+                          }
+                    }
                   />
                 )}
               </div>
@@ -553,7 +675,20 @@ function App() {
             </div>
             {!example && (
               <div hidden={skillView !== "usage"}>
+                <CollectionPanel />
                 <UsagePanel inventory={inventory} roots={roots} onChange={setUsage} />
+              </div>
+            )}
+            {!example && (
+              <div hidden={skillView !== "manage"}>
+                <ManagementPanel
+                  inventory={inventory}
+                  targets={targets}
+                  initialSkillId={managementSkill}
+                  onChanged={() =>
+                    void refreshWorkspace().catch(() => setError("无法刷新资源状态。"))
+                  }
+                />
               </div>
             )}
           </>
@@ -589,10 +724,12 @@ function Detail({
   skill,
   usage,
   close,
+  manage,
 }: {
   skill: SkillRecord;
   usage?: SkillUsage;
   close: () => void;
+  manage?: () => void;
 }) {
   return (
     <aside className="detail" aria-label="Skill 详情">
@@ -604,6 +741,11 @@ function Detail({
       </div>
       <h2>{skill.name}</h2>
       <p>{skill.description || "未提供描述"}</p>
+      {manage && (
+        <button className="button primary" type="button" onClick={manage}>
+          同步或备份这份 Skill <ChevronRight size={15} />
+        </button>
+      )}
       <dl>
         <dt>客户端</dt>
         <dd>{names[skill.client]}</dd>
@@ -617,7 +759,7 @@ function Detail({
       </div>
       <pre>{skill.content}</pre>
       {skill.contentTruncated && <p className="muted">文件较大，仅显示前段内容。</p>}
-      <p className="detail-note">统计明细和整理建议在下方使用账本中。当前不会改动这份文件。</p>
+      <p className="detail-note">浏览保持只读。同步与恢复会先展示计划，再由你确认。</p>
     </aside>
   );
 }

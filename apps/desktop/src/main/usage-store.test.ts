@@ -1,9 +1,19 @@
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createUsageState } from "@koyori/core";
+import { createUsageImportCache, createUsageState } from "@koyori/core";
 import { afterEach, describe, expect, it } from "vitest";
-import { isPreferencePatch, isUsageRules, readUsageState, writeUsageState } from "./usage-store";
+import {
+  createCollectionState,
+  isPreferencePatch,
+  isUsageRules,
+  readCollectionState,
+  readUsageCache,
+  readUsageState,
+  writeCollectionState,
+  writeUsageCache,
+  writeUsageState,
+} from "./usage-store";
 
 const directories: string[] = [];
 async function location() {
@@ -61,5 +71,41 @@ describe("usage ledger persistence", () => {
     expect(isPreferencePatch({ firstSeenAt: "2020-01-01" })).toBe(false);
     expect(isPreferencePatch({ keep: true })).toBe(true);
     expect(isPreferencePatch({ reviewAfter: "invalid" })).toBe(false);
+  });
+
+  it("persists disposable incremental cache without creating a backup copy", async () => {
+    const path = `${await location()}.cache`;
+    const cache = createUsageImportCache();
+
+    await writeUsageCache(path, cache);
+
+    await expect(readUsageCache(path)).resolves.toEqual(cache);
+    await expect(stat(`${path}.bak`)).rejects.toMatchObject({ code: "ENOENT" });
+    expect((await stat(path)).mode & 0o777).toBe(0o600);
+  });
+
+  it("rejects an invalid cache without changing the file", async () => {
+    const path = `${await location()}.cache`;
+    await writeFile(path, JSON.stringify({ version: 1, files: { private: "content" } }));
+    const before = await readFile(path, "utf8");
+
+    await expect(readUsageCache(path)).rejects.toThrow("invalid format");
+    expect(await readFile(path, "utf8")).toBe(before);
+  });
+
+  it("persists collection opt-in and failure status separately", async () => {
+    const path = `${await location()}.collection`;
+    const next = {
+      ...createCollectionState(),
+      enabled: true,
+      candidateIds: ["claude-history"],
+      lastAttemptAt: "2026-09-22T00:00:00.000Z",
+      error: "Synthetic failure",
+    };
+
+    await writeCollectionState(path, next);
+
+    await expect(readCollectionState(path)).resolves.toEqual(next);
+    expect((await stat(path)).mode & 0o777).toBe(0o600);
   });
 });

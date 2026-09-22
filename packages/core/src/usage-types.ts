@@ -3,6 +3,7 @@ import type { ClientId } from "./types.ts";
 export interface HistorySource {
   id: string;
   rootId: string;
+  rootIds?: string[];
   client: ClientId;
   path: string;
   label: string;
@@ -34,6 +35,7 @@ export interface HistoryCoverage {
   scannedAt: string;
   readLimited: boolean;
   filesRead: number;
+  cachedFiles?: number;
   recordsRead: number;
   malformedLines: number;
   skippedFiles: number;
