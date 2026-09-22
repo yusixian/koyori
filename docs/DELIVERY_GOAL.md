@@ -41,7 +41,7 @@
 - Dokploy 当前仍部署 `1ed91aff27be4e8e1fa4220c670853773a19cbba`。正式域名 [https://koyori.cosine.ren/](https://koyori.cosine.ren/) 的主页返回 200，`/healthz` 返回 `ok`，Skills 指南、`/download`、`/changelog` 和 `/search` 返回 200，不存在路径返回 404；这些证据不代表本轮 Agent 已上线。
 - 正式域名的公开 HTTP 路由检查已补齐；本轮 Agent 新版部署后仍需重新进行桌面首页、390px 移动导航、关键词搜索和指南跳转验收。
 - 剩余外部条件：本轮新版文档部署、Git 远端真实账号往返、安装包签名/公证、公开 Release 和跨公开版本升级。没有使用真实个人 Skills 进行写入或上传，也没有执行公开桌面发版。
-- [CI 35703564665](https://github.com/yusixian/koyori/actions/runs/35703564665) 在 `96c02611765ce7aa74f5db9bbeab5e6f196c340a` 全部通过，包含 Linux 检查/文档容器、macOS 构建和打包前后三项真实 Electron 验收。[PR #3](https://github.com/yusixian/koyori/pull/3) 已合并为 `42e92844168eb3ba487d84dee7b3c9f9fbc67e57`，与验证提交的 Git tree 一致。
+- [CI 35703564665](https://github.com/yusixian/koyori/actions/runs/35703564665) 在 `96c02611765ce7aa74f5db9bbeab5e6f196c340a` 全部通过，包含 Linux 检查/文档容器、macOS 构建和打包前、打包后各三项真实 Electron 验收。[PR #3](https://github.com/yusixian/koyori/pull/3) 已合并为 `42e92844168eb3ba487d84dee7b3c9f9fbc67e57`，与验证提交的 Git tree 一致。
 - 钥匙串弹窗已修复：只在用户主动保存或使用密钥时访问系统安全存储；本机无密钥启动、重启和对话验收通过。浏览器控制连接中断后，未触发新版 Dokploy 部署；恢复已登录控制台后继续，不需重置钥匙串。
 
 ## 后续恢复入口

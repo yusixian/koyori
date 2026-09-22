@@ -52,7 +52,7 @@ Skills 管理切片已经通过独立 review、CI 和真实 Electron 验收，[P
 - managed-files 与 Git 备份核心 20 项定向测试通过，覆盖完整目录、权限和空目录、显式替换、写前快照、外部修改、链接边界、部分恢复、动态撤权、便携快照、Git 原始字节往返及不同远端隔离。
 - 桌面管理/自动备份/来源 controller 与管理 CLI 共 16 项定向测试通过；根 TypeScript、相关格式检查与公共文件基础检查通过。
 - 本轮 Agent 的 Provider 定向 11 项、controller 定向 11 项共 22 项通过；相关 TypeScript 检查通过。真实 Electron 合成服务验收通过，覆盖流式回复、取消、重启保留、页面切换草稿、连接隔离、错误脱敏和无密钥流程不访问钥匙串；[CI 35703564665](https://github.com/yusixian/koyori/actions/runs/35703564665) 已通过，[PR #3](https://github.com/yusixian/koyori/pull/3) 已合并。
-- [CI 35703564665](https://github.com/yusixian/koyori/actions/runs/35703564665) 在 `96c02611765ce7aa74f5db9bbeab5e6f196c340a` 通过 18 个测试文件、138 项测试、完整检查、依赖审计、文档容器及 macOS 打包前后三项真实 Electron 验收。Agent 合并 commit `42e92844168eb3ba487d84dee7b3c9f9fbc67e57` 的 Git tree 与该验证提交相同。
+- [CI 35703564665](https://github.com/yusixian/koyori/actions/runs/35703564665) 在 `96c02611765ce7aa74f5db9bbeab5e6f196c340a` 通过 18 个测试文件、138 项测试、完整检查、依赖审计、文档容器及 macOS 打包前、打包后各三项真实 Electron 验收。Agent 合并 commit `42e92844168eb3ba487d84dee7b3c9f9fbc67e57` 的 Git tree 与该验证提交相同。
 - [CI 35696269229](https://github.com/yusixian/koyori/actions/runs/35696269229) 属于已合并的 Skills 基线，在 `ebc0d529d10f3c5c51e6f9813f48bcbe934baf37` 通过 16 个测试文件、116 项测试，以及完整类型、格式、构建、依赖审计、文档容器和 macOS 打包后验收。合并 commit `1ed91aff27be4e8e1fa4220c670853773a19cbba` 的 Git tree 与该提交相同，不能作为本轮 Agent 的 CI 证据。
 - 文档站类型检查和静态构建通过，新指南已生成 `/docs/agent` 静态页面。构建通过只能证明站点产物可生成，不代表 Dokploy 已部署。
 
