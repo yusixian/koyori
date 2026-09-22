@@ -54,6 +54,6 @@
 
 2026-09-22 再核对：基线 `main` 为 `e128a9392c22701ccb73817287a8733d11d295db`，CI 35705329059 全部通过。通过 Chrome 原生窗口触发并核验 Dokploy 部署同一提交（Done，41 秒）；`/healthz` 返回 `ok`，`/docs/agent/` 已返回成功并包含钥匙串按需访问指南。本轮讨论指南将在合并后单独部署和检查。
 
-当前分支 `feat/skill-agent-discussion`：core/IPC 定向 19 项、TypeScript、相关 Biome、桌面构建和文档静态构建通过；独立数据边界 review 未发现 P1/P2。真实 Electron 两项用例的界面、实际请求内容及新讨论重启保留断言已通过，但两项均在 `app.close()` 等待退出时超时；正在定位退出时序，不能将本轮 Electron 验收记为通过。已创建 [PR #5](https://github.com/yusixian/koyori/pull/5)，最终 CI、合并 SHA 和 Dokploy 部署记录集中保存在该 PR 的交付说明，避免将旧提交证据误作当前候选。
+当前分支 `feat/skill-agent-discussion`：core/IPC 定向 19 项、TypeScript、相关 Biome、桌面构建和文档静态构建通过；独立数据边界 review 未发现 P1/P2。本机真实 Electron 的界面、实际请求内容及新讨论重启保留断言已通过，但调试器退出等待不稳定。实验测试 helper 在独立单次成功后，主代理连续复核仍失败，已撤回，不修改生产退出生命周期，也不把本机完整验收记为通过；合并门槛为同一提交在 CI 中打包前、打包后的完整真实 Electron 验收。已创建 [PR #5](https://github.com/yusixian/koyori/pull/5)，最终 CI、合并 SHA 和 Dokploy 部署记录集中保存在该 PR 的交付说明，避免将旧提交证据误作当前候选。
 
 先核对工作区与子代理状态，再读取本文。验证和远端状态随阶段完成更新，不把历史 CI 或本地测试替代当前候选证据。
