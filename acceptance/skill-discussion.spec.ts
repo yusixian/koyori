@@ -94,10 +94,14 @@ test("skill discussion previews selected evidence and sends only the edited draf
     await page.getByRole("button", { name: "使用与建议", exact: true }).click();
     await page.getByRole("checkbox", { name: /Claude Code projects/ }).check();
     await page.getByRole("button", { name: "开启所选目录的自动统计" }).click();
+    await expect(page.getByText("自动采集已开启", { exact: true })).toBeVisible();
     await expect(
       page.locator(".usage-metric").filter({ hasText: "调用尝试" }).locator("strong"),
     ).toHaveText("1");
-    await page.getByRole("button", { name: "资源清单", exact: true }).click();
+    const inventoryTab = page.getByRole("button", { name: "资源清单", exact: true });
+    await inventoryTab.focus();
+    await inventoryTab.press("Enter");
+    await expect(inventoryTab).toHaveAttribute("aria-pressed", "true");
     await page.getByRole("button", { name: /discussion-writer/ }).click();
     await page.getByRole("button", { name: "和 Koyori 讨论", exact: true }).click();
     preview = page.getByRole("region", { name: "Skill 讨论摘要" });

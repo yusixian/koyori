@@ -62,3 +62,12 @@ jobs:
             artifacts/*.zip
             artifacts/candidate.json
           retention-days: 7
+      - name: Preserve failed desktop acceptance evidence
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: koyori-desktop-failure
+          path: |
+            test-results/
+            artifacts/*.png
+          retention-days: 7
