@@ -1,6 +1,6 @@
 # Skills 与个人 Agent 交付
 
-> 2026-09-22；Skills 交付切片已完成独立 review、合并及文档站部署，PR #1/#2 已合并；正式域名 DNS/HTTPS 已实测。本轮自配模型 Agent 开发版切片正在验收，CI、合并和新版部署待完成。
+> 2026-09-22；Skills 交付切片已完成独立 review、合并及文档站部署，PR #1/#2 已合并；正式域名 DNS/HTTPS 已实测。自配模型 Agent 切片已完成 review、CI 和 [PR #3](https://github.com/yusixian/koyori/pull/3) 合并；新版文档部署待完成。
 
 ## 目标与授权
 
@@ -25,7 +25,7 @@
 3. **M3 Git 备份**：连接、快照上传/下载、远端校验、自动备份与重试、断开保留数据。使用合成本地 bare Git 远端做故障/冲突验证；真实账号上传只在单独明确选择后进行。
 4. **交付**：公开文档与未发布说明；有界独立审查与修复、定向本地检查、真实桌面验收、精确 SHA 的 CI；review 后合并。Dokploy 部署文档站并验证容器与公网页面、搜索、深链和移动视图。
 
-自配模型的本地文字 Agent 已作为后续开发版切片实现；真实 Electron 验收已通过，CI、合并和新版部署仍待完成。Bot 桌面通道/API、工具操作卡和语音仍属后续范围。本轮不改变本文件原有 Skills 授权，也不授权改造私有 Bot；使用证据与受控计划继续为后续能力保留调用入口。
+自配模型的本地文字 Agent 已作为后续开发版切片实现；真实 Electron、CI 与合并已完成，新版文档部署待完成。Bot 桌面通道/API、工具操作卡和语音仍属后续范围。本轮不改变本文件原有 Skills 授权，也不授权改造私有 Bot；使用证据与受控计划继续为后续能力保留调用入口。
 
 ## 当前进展
 
@@ -37,10 +37,12 @@
 - 文档站桌面与 390px 移动导航、搜索、新指南已在本地实测；Dokploy 独立应用、Dockerfile 与正式 HTTPS 域名已配置并实测。
 - [CI 35696269229](https://github.com/yusixian/koyori/actions/runs/35696269229) 属于 Skills 基线，在 `ebc0d529d10f3c5c51e6f9813f48bcbe934baf37` 全部通过：116 项测试、Linux 文档容器、macOS 打包与打包后两项 Electron 验收。
 - [PR #1](https://github.com/yusixian/koyori/pull/1) 与 [PR #2](https://github.com/yusixian/koyori/pull/2) 已合并，本轮开始时 `origin/main` 为 `1d9f7ed8965d6918170785d7c12c595c8460db40`；Skills 功能合并 commit 为 `1ed91aff27be4e8e1fa4220c670853773a19cbba`。
-- 本轮 Agent 的 Provider/controller 定向 22 项（11+11）与 TypeScript 检查通过；真实 Electron 验收通过，覆盖流式/取消/错误、重启保留、连接隔离、页面草稿与无密钥流程不访问钥匙串；CI、合并和新版部署待完成。
+- 本轮 Agent 的 Provider/controller 定向 22 项（11+11）与 TypeScript 检查通过；真实 Electron 验收通过，覆盖流式/取消/错误、重启保留、连接隔离、页面草稿与无密钥流程不访问钥匙串；新版文档部署待完成。
 - Dokploy 当前仍部署 `1ed91aff27be4e8e1fa4220c670853773a19cbba`。正式域名 [https://koyori.cosine.ren/](https://koyori.cosine.ren/) 的主页返回 200，`/healthz` 返回 `ok`，Skills 指南、`/download`、`/changelog` 和 `/search` 返回 200，不存在路径返回 404；这些证据不代表本轮 Agent 已上线。
 - 正式域名的公开 HTTP 路由检查已补齐；本轮 Agent 新版部署后仍需重新进行桌面首页、390px 移动导航、关键词搜索和指南跳转验收。
-- 剩余外部条件：本轮 Agent 的 CI/合并/新版部署、Git 远端真实账号往返、安装包签名/公证、公开 Release 和跨公开版本升级。没有使用真实个人 Skills 进行写入或上传，也没有执行公开桌面发版。
+- 剩余外部条件：本轮新版文档部署、Git 远端真实账号往返、安装包签名/公证、公开 Release 和跨公开版本升级。没有使用真实个人 Skills 进行写入或上传，也没有执行公开桌面发版。
+- [CI 35703564665](https://github.com/yusixian/koyori/actions/runs/35703564665) 在 `96c02611765ce7aa74f5db9bbeab5e6f196c340a` 全部通过，包含 Linux 检查/文档容器、macOS 构建和打包前、打包后各三项真实 Electron 验收。[PR #3](https://github.com/yusixian/koyori/pull/3) 已合并为 `42e92844168eb3ba487d84dee7b3c9f9fbc67e57`，与验证提交的 Git tree 一致。
+- 钥匙串弹窗已修复：只在用户主动保存或使用密钥时访问系统安全存储；本机无密钥启动、重启和对话验收通过。浏览器控制连接中断后，未触发新版 Dokploy 部署；恢复已登录控制台后继续，不需重置钥匙串。
 
 ## 后续恢复入口
 
