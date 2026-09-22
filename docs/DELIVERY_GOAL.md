@@ -42,7 +42,7 @@
 - 正式域名的公开 HTTP 路由检查已补齐；本轮 Agent 新版部署后仍需重新进行桌面首页、390px 移动导航、关键词搜索和指南跳转验收。
 - 剩余外部条件：本轮新版文档部署、Git 远端真实账号往返、安装包签名/公证、公开 Release 和跨公开版本升级。没有使用真实个人 Skills 进行写入或上传，也没有执行公开桌面发版。
 - [CI 35703564665](https://github.com/yusixian/koyori/actions/runs/35703564665) 在 `96c02611765ce7aa74f5db9bbeab5e6f196c340a` 全部通过，包含 Linux 检查/文档容器、macOS 构建和打包前、打包后各三项真实 Electron 验收。[PR #3](https://github.com/yusixian/koyori/pull/3) 已合并为 `42e92844168eb3ba487d84dee7b3c9f9fbc67e57`，与验证提交的 Git tree 一致。
-- 钥匙串弹窗已修复：只在用户主动保存或使用密钥时访问系统安全存储；本机无密钥启动、重启和对话验收通过。浏览器控制连接中断后，未触发新版 Dokploy 部署；恢复已登录控制台后继续，不需重置钥匙串。
+- 钥匙串弹窗已修复：只在用户主动保存或使用密钥时访问系统安全存储；本机无密钥启动、重启和对话验收通过。此前浏览器连接中断留下的部署已在本轮通过 Chrome 原生窗口补齐，见下方记录；不需重置钥匙串。
 
 ## 后续恢复入口
 
@@ -54,6 +54,6 @@
 
 2026-09-22 再核对：基线 `main` 为 `e128a9392c22701ccb73817287a8733d11d295db`，CI 35705329059 全部通过。通过 Chrome 原生窗口触发并核验 Dokploy 部署同一提交（Done，41 秒）；`/healthz` 返回 `ok`，`/docs/agent/` 已返回成功并包含钥匙串按需访问指南。本轮讨论指南将在合并后单独部署和检查。
 
-当前分支 `feat/skill-agent-discussion`：core/IPC 定向 19 项、TypeScript、相关 Biome、桌面构建和文档静态构建通过；独立数据边界 review 未发现 P1/P2。真实 Electron 两项用例的界面、实际请求内容及新讨论重启保留断言已通过，但两项均在 `app.close()` 等待退出时超时；正在定位退出时序，不能将本轮 Electron 验收记为通过。尚未提交或创建本轮 PR。
+当前分支 `feat/skill-agent-discussion`：core/IPC 定向 19 项、TypeScript、相关 Biome、桌面构建和文档静态构建通过；独立数据边界 review 未发现 P1/P2。真实 Electron 两项用例的界面、实际请求内容及新讨论重启保留断言已通过，但两项均在 `app.close()` 等待退出时超时；正在定位退出时序，不能将本轮 Electron 验收记为通过。已创建 [PR #5](https://github.com/yusixian/koyori/pull/5)，最终 CI、合并 SHA 和 Dokploy 部署记录集中保存在该 PR 的交付说明，避免将旧提交证据误作当前候选。
 
 先核对工作区与子代理状态，再读取本文。验证和远端状态随阶段完成更新，不把历史 CI 或本地测试替代当前候选证据。

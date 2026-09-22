@@ -74,6 +74,7 @@ test("skill discussion previews selected evidence and sends only the edited draf
   let app = await launch();
   try {
     let page = await app.firstWindow();
+    await page.setViewportSize({ width: 960, height: 640 });
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.getByRole("button", { name: /discussion-writer/ }).click();
@@ -102,7 +103,9 @@ test("skill discussion previews selected evidence and sends only the edited draf
     await inventoryTab.focus();
     await inventoryTab.press("Enter");
     await expect(inventoryTab).toHaveAttribute("aria-pressed", "true");
-    await page.getByRole("button", { name: /discussion-writer/ }).click();
+    await expect(
+      page.getByRole("heading", { name: "discussion-writer", exact: true }),
+    ).toBeVisible();
     await page.getByRole("button", { name: "和 Koyori 讨论", exact: true }).click();
     preview = page.getByRole("region", { name: "Skill 讨论摘要" });
     await expect(preview).toBeVisible();
@@ -111,11 +114,14 @@ test("skill discussion previews selected evidence and sends only the edited draf
     expect(snapshot).toMatch(/调用尝试[^\n]*1/);
     expect(requests).toHaveLength(0);
     await page.getByRole("button", { name: "Skills", exact: true }).click();
-    await page.getByRole("button", { name: /discussion-writer/ }).click();
+    await expect(
+      page.getByRole("heading", { name: "discussion-writer", exact: true }),
+    ).toBeVisible();
     await expect(page.getByRole("button", { name: "和 Koyori 讨论", exact: true })).toBeDisabled();
     await page.getByRole("button", { name: "Agent", exact: true }).click();
     await expect(preview.locator("pre")).toHaveText(snapshot);
     await expect(page.getByLabel("消息", { exact: true })).toHaveValue("已有草稿：请先核对证据。");
+    await page.setViewportSize({ width: 1240, height: 820 });
     await page.screenshot({ path: "artifacts/desktop-discussion-1240.png" });
     await page.setViewportSize({ width: 960, height: 640 });
     await page.screenshot({ path: "artifacts/desktop-discussion-960.png" });
@@ -178,6 +184,32 @@ test("skill discussion previews selected evidence and sends only the edited draf
     await page.getByRole("button", { name: "Agent", exact: true }).click();
     await expect(page.getByText(edited, { exact: true })).toBeVisible();
     expect(requests).toHaveLength(1);
+  } catch (error) {
+    const page = app.windows()[0];
+    if (page && !page.isClosed()) {
+      await Promise.allSettled([
+        page
+          .screenshot()
+          .then((body) =>
+            test.info().attach("discussion-page", { body, contentType: "image/png" }),
+          ),
+        page
+          .locator("body")
+          .ariaSnapshot()
+          .then((body) =>
+            test.info().attach("discussion-accessibility", { body, contentType: "text/plain" }),
+          ),
+        page
+          .evaluate(() => window.koyori.getWorkspace())
+          .then((view) =>
+            test.info().attach("discussion-workspace", {
+              body: JSON.stringify(view),
+              contentType: "application/json",
+            }),
+          ),
+      ]);
+    }
+    throw error;
   } finally {
     await app.close();
     server.closeAllConnections();

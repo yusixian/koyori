@@ -6,7 +6,7 @@
 
 本轮在已合并的 Skills 管理流程之上，加入个人 Agent 的首个开发切片：使用自配 OpenAI-compatible Chat Completions 连接进行本地文字会话，并保留连接隔离、取消、错误和未知用量状态。
 
-Skills 管理切片已经通过独立 review、CI 和真实 Electron 验收，[PR #1](https://github.com/yusixian/koyori/pull/1) 与文档跟进的 [PR #2](https://github.com/yusixian/koyori/pull/2) 已合并。文档站已部署到独立 Dokploy 应用，正式域名的 DNS/HTTPS 已实测；当前已核验的文档部署 commit 为 `e128a9392c22701ccb73817287a8733d11d295db`，Agent 文字对话指南已上线。本轮 Agent 文字基础已通过真实 Electron 与 CI，[PR #3](https://github.com/yusixian/koyori/pull/3) 已合并；单 Skill 讨论仍在开发，待本轮 review 与 CI 验收，本轮讨论指南将随功能交付部署，完整 0.1 还包括 Git 备份真实账号验收、个人 Bot 接入和公开分发。
+Skills 管理切片已经通过独立 review、CI 和真实 Electron 验收，[PR #1](https://github.com/yusixian/koyori/pull/1) 与文档跟进的 [PR #2](https://github.com/yusixian/koyori/pull/2) 已合并。文档站已部署到独立 Dokploy 应用，正式域名的 DNS/HTTPS 已实测；当前已核验的文档部署 commit 为 `e128a9392c22701ccb73817287a8733d11d295db`，Agent 文字对话指南已上线。本轮 Agent 文字基础已通过真实 Electron 与 CI，[PR #3](https://github.com/yusixian/koyori/pull/3) 已合并；单 Skill 讨论已实现，独立数据边界 review 未发现 P1/P2；本轮 CI、合并和讨论指南部署的交付记录见 [PR #5](https://github.com/yusixian/koyori/pull/5)。完整 0.1 还包括 Git 备份真实账号验收、个人 Bot 接入和公开分发。
 
 ## 个人 Agent（本轮开发版）
 
@@ -16,12 +16,12 @@ Skills 管理切片已经通过独立 review、CI 和真实 Electron 验收，[P
 - 请求只携带当前会话文字，不自动发送 Skills、使用账本、目录或日志；当前 Agent 以纯文本回复为主，没有本机写入工具。
 - Bot 桌面通道/API、工具操作卡、语音和公开发行仍未实现；后端参考方案见 [后端与统一域名](design/backend.md)，不把私有 Bot 实现带入公开工程。
 
-## Skills → Agent 单 Skill 讨论（本轮开发中）
+## Skills → Agent 单 Skill 讨论（开发版）
 
 - 用户从资源清单选择一项 Skill 后，主进程按选定观察窗口生成完整预览；白名单摘要只包含名称、客户端、观察窗口、次数及证据缺口、保留/复查状态和规则类型。
 - 用户审阅摘要后，可将它追加到当前可编辑草稿并手动发送；已有草稿保留，加入前可丢弃摘要，加入后可在草稿中删除，准备摘要不会自动请求模型。
 - 摘要不包含 Skill 正文、描述、路径、原始会话或其他资源信息。名称可能私密，发送前由用户审阅；统计快照不会随账本变化自动更新，未知、同名待归属和暂停状态仍解释。
-- 当前只支持单 Skill，不支持多选、全文附件或证据引用跳转；整理建议没有操作卡和执行权限。本轮尚待 review 与 CI 验收，不计入 PR3 基础 Agent 已通过的证据。
+- 当前只支持单 Skill，不支持多选、全文附件或证据引用跳转；整理建议没有操作卡和执行权限。本轮测试和交付独立记录在 PR #5，不复用 PR #3 的通过状态。
 
 ## Skills 发现与清单
 
@@ -61,6 +61,7 @@ Skills 管理切片已经通过独立 review、CI 和真实 Electron 验收，[P
 - 本轮 Agent 的 Provider 定向 11 项、controller 定向 11 项共 22 项通过；相关 TypeScript 检查通过。真实 Electron 合成服务验收通过，覆盖流式回复、取消、重启保留、页面切换草稿、连接隔离、错误脱敏和无密钥流程不访问钥匙串；[CI 35703564665](https://github.com/yusixian/koyori/actions/runs/35703564665) 已通过，[PR #3](https://github.com/yusixian/koyori/pull/3) 已合并。
 - [CI 35703564665](https://github.com/yusixian/koyori/actions/runs/35703564665) 在 `96c02611765ce7aa74f5db9bbeab5e6f196c340a` 通过 18 个测试文件、138 项测试、完整检查、依赖审计、文档容器及 macOS 打包前、打包后各三项真实 Electron 验收。Agent 合并 commit `42e92844168eb3ba487d84dee7b3c9f9fbc67e57` 的 Git tree 与该验证提交相同。
 - [CI 35696269229](https://github.com/yusixian/koyori/actions/runs/35696269229) 属于已合并的 Skills 基线，在 `ebc0d529d10f3c5c51e6f9813f48bcbe934baf37` 通过 16 个测试文件、116 项测试，以及完整类型、格式、构建、依赖审计、文档容器和 macOS 打包后验收。合并 commit `1ed91aff27be4e8e1fa4220c670853773a19cbba` 的 Git tree 与该提交相同，不能作为本轮 Agent 的 CI 证据。
+- 单 Skill 摘要 core/IPC 19 项定向测试、TypeScript、相关 Biome、桌面和文档构建通过；独立数据边界 review 未发现 P1/P2。Electron 验收覆盖窄窗口详情保留、完整本机预览、草稿追加与编辑、实际网络 payload、未知统计和重启后的会话保留；最终执行结果及当前 CI 见 PR #5。
 - 文档站类型检查和静态构建通过，新指南已生成 `/docs/agent` 静态页面。构建通过只能证明站点产物可生成，不代表 Dokploy 已部署。
 
 历史候选包、旧 CI 或之前的本机性能数据不能证明当前代码。审查修复后，Skills 切片的真实 Electron 两项流程已重新通过，覆盖自动发现、统计启用、完整目录同步、本地备份/恢复预览、操作历史、Git 快照上传/取回与重启保留；使用临时 home 与本地 bare Git 仓库。桌面检查 960px；文档站已检查桌面、390px、移动导航、搜索和新指南。本轮 Agent 已单独通过真实 Electron 验收，并检查 1240px 与 960px 窗口布局。
@@ -73,13 +74,13 @@ Dokploy 已部署 `e128a9392c22701ccb73817287a8733d11d295db`，平台记录 Done
 
 此前 Skills 部署已验证主页、Skills 指南、下载、更新说明和搜索的 HTTP 路由，以及桌面和 390px 移动导航。它们不替代本轮讨论指南部署后的检查；本轮交付后重新核对搜索和新内容。
 
-尚未完成的外部证据：本轮讨论指南部署与回滚验证，Git 远端真实账号往返、安装包签名/公证、公开 Release、跨公开版本升级。当前安装包仍是 Apple Silicon macOS 未签名候选，不是正式发行版。
+本轮讨论指南部署结果记录在 PR #5；仍需单独完成 Dokploy 回滚演练、Git 远端真实账号往返、安装包签名/公证、公开 Release、跨公开版本升级。当前安装包仍是 Apple Silicon macOS 未签名候选，不是正式发行版。
 
 ## 后续顺序
 
-1. 完成本轮 Skills → Agent 讨论的独立 review、定向验收与 CI，再合并并部署讨论指南；文字 Agent 指南已经上线。
-2. 新版部署后核对正式域名下的 Agent 指南、搜索和移动布局，记录部署 commit；保留上一部署并验证回滚流程。
+1. Skills → Agent 单项讨论的代码、review、CI 和部署以 PR #5 为集成交付入口；常规检查通过后连续完成合并和文档部署。
+2. 下一功能切片为本地“保留 / 稍后复查”操作卡：先展示明确提案，再由宿主校验当前资源与用户确认；不依赖 Bot 通道。补齐文档站回滚演练。
 3. 用合并后的候选做真实自用：Claude → Codex 同步、本地备份与恢复、自动统计覆盖；根据证据修正兼容规则。
 4. 完成 Git 远端快照的真实往返与失败恢复，再决定是否作为 0.1 默认入口。
-5. 按独立私有服务边界推进 Bot 桌面通道/API、工具操作卡和语音；不把私有 Bot 实现复制到公开工程。
+5. 按独立私有服务边界推进 Bot 桌面通道/API 和语音；不把私有 Bot 实现复制到公开工程。
 6. 满足许可证、历史公开检查、候选安装验收和发布授权后，再创建首个公开 preview/0.1；文档站部署不等于应用已经发布。
