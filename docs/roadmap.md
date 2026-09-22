@@ -2,7 +2,7 @@
 
 > 2026-09-22；文档、版本和分发已前移至工程起步，具体功能按原型收敛，不是交付时间承诺。
 
-当前按 [0.1 MVP 草案](design/mvp-0.1.0.md) 推进 Skills 管理与个人 Agent 两条主线。工程基线、自动发现、Claude Code 使用证据和本地同步/快照已进入开发版；Git 备份、个人 Agent、线上文档站和公开分发仍需各自验收。下列阶段保留长期能力演进，不代表时间承诺。
+当前按 [0.1 MVP 草案](design/mvp-0.1.0.md) 推进 Skills 管理与个人 Agent 两条主线。工程基线、自动发现、Claude Code 使用证据、本地同步/快照和 Git 备份已进入开发版并通过隔离验收；文档服务已部署，正式域名待 DNS。真实账号、个人 Agent 和公开分发仍需各自验收。下列阶段保留长期能力演进，不代表时间承诺。
 
 ## 长期能力演进（不替代首版里程碑）
 
@@ -28,7 +28,7 @@
 
 ## 官网和分发
 
-同一个 monorepo，apps/site 使用 React Router 与 Fumadocs 独立构建，计划部署到 Dokploy，承载官网、/docs、/download、/changelog 及反馈/社区入口。Dokploy 是已确认的平台，应用正在配置；当前尚未部署或完成公网健康检查。详见 [发布与开源基线](design/release-foundation.md)。
+同一个 monorepo，apps/site 使用 React Router 与 Fumadocs 独立构建，已部署到 Dokploy，承载官网、/docs、/download、/changelog 及反馈/社区入口。临时域名的公网健康和深链检查通过，正式域名等待 DNS 配置。部署 commit 与验证分层见 [实施状态](implementation-status.md)；工程约束见 [发布与开源基线](design/release-foundation.md)。
 
 安装产物优先考虑公开 GitHub Releases，需要时扩展对象存储/CDN，不进入站点镜像或临时构建目录。代码已采用 MIT；发行前仍需检查拟公开历史和产物，并配置无需客户端私有仓库 token 的分发源。下载/更新子域可固定入口，底层可替换。
 
