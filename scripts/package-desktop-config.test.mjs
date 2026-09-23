@@ -93,7 +93,7 @@ test("manual preview requires an explicit clean unsigned release request", () =>
   assert.equal(candidate.signing, "unsigned");
 });
 
-test("Apple Development preview requires a signing identity and stays manual", () => {
+test("Apple Development preview requires a signing identity and publishes update metadata", () => {
   assert.equal(isDevelopmentSignedPreview({ KOYORI_DEVELOPMENT_SIGNED_PREVIEW: "1" }), true);
   assert.doesNotThrow(() =>
     assertDevelopmentSignedPreviewRequest({
@@ -120,7 +120,7 @@ test("Apple Development preview requires a signing identity and stays manual", (
     developmentIdentity: "Apple Development: Test",
   });
   assert.equal(config.forceCodeSigning, true);
-  assert.equal(config.publish, null);
+  assert.equal(config.publish?.[0]?.channel, "alpha");
   assert.equal(config.mac.notarize, false);
   assert.deepEqual(config.mac.additionalArguments, ["--timestamp=none"]);
   assert.equal(config.mac.identity, "Apple Development: Test");
@@ -132,9 +132,10 @@ test("Apple Development preview requires a signing identity and stays manual", (
     developmentSigned: true,
     artifacts: [],
   });
-  assert.equal(candidate.distribution, "manual-preview-candidate");
+  assert.equal(candidate.distribution, "development-update-candidate");
   assert.equal(candidate.signing, "signed");
   assert.equal(candidate.notarized, false);
+  assert.equal(expectedPublicArtifactNames("0.1.0-alpha.2", true).includes("alpha-mac.yml"), true);
 });
 
 test("signed packaging uses the explicit alpha GitHub feed without publishing", () => {

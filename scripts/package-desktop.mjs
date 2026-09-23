@@ -51,7 +51,8 @@ const out = resolve(root, "artifacts");
 const appUpdatePath = resolve(out, "mac-arm64/Koyori.app/Contents/Resources/app-update.yml");
 await mkdir(out, { recursive: true });
 await mkdir(resolve(root, "apps/desktop/build"), { recursive: true });
-const artifactNames = expectedPublicArtifactNames(version, signed);
+const hasUpdateMetadata = signed || developmentSigned;
+const artifactNames = expectedPublicArtifactNames(version, hasUpdateMetadata);
 for (const file of new Set([
   ...artifactNames,
   "alpha-mac.yml",
@@ -154,19 +155,18 @@ if (signed || developmentSigned) {
     ) {
       throw new Error("The app is not signed with a hardened Developer ID Application identity.");
     }
-
-    validateAppUpdateMetadata(parseYaml(await readFile(appUpdatePath, "utf8")));
-    validateAlphaUpdateMetadata({
-      value: parseYaml(await readFile(resolve(out, "alpha-mac.yml"), "utf8")),
-      version,
-      artifacts,
-    });
   }
+  validateAppUpdateMetadata(parseYaml(await readFile(appUpdatePath, "utf8")));
+  validateAlphaUpdateMetadata({
+    value: parseYaml(await readFile(resolve(out, "alpha-mac.yml"), "utf8")),
+    version,
+    artifacts,
+  });
 }
-if (!signed) {
+if (!hasUpdateMetadata) {
   const unexpectedUpdateConfig = await stat(appUpdatePath).catch(() => null);
   if (unexpectedUpdateConfig) {
-    throw new Error("Manual-install candidates must not contain app-update.yml.");
+    throw new Error("Candidates without updates must not contain app-update.yml.");
   }
 }
 const candidatePath = resolve(out, "candidate.json");
@@ -192,7 +192,7 @@ console.log(
   signed
     ? "Signed and notarized preview candidate built and verified. No Release was published."
     : developmentSigned
-      ? "Apple Development-signed manual preview candidate built and verified. No Release was published."
+      ? "Apple Development-signed update preview candidate built and verified. No Release was published."
       : manualPreview
         ? "Unsigned manual preview candidate built and verified. No Release was published."
         : "Local unsigned candidate built. No Release was published.",

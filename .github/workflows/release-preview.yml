@@ -6,7 +6,7 @@ on:
       distribution:
         description: Preview distribution method
         required: true
-        default: manual
+        default: development-signed
         type: choice
         options:
           - manual
@@ -76,7 +76,7 @@ jobs:
           --commit "$GITHUB_SHA"
           --output "$GITHUB_OUTPUT"
 
-      - name: Check first-release identity before building
+      - name: Check release identity before building
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.prepare.outputs.tag }}
@@ -105,7 +105,7 @@ jobs:
         if: inputs.distribution == 'manual'
         run: KOYORI_MANUAL_PREVIEW=1 pnpm package:mac
 
-      - name: Build Apple Development-signed manual-install candidate
+      - name: Build Apple Development-signed update candidate
         if: inputs.distribution == 'development-signed'
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}

@@ -47,7 +47,7 @@ async function fixture({ notarized = true, developmentSigned = false } = {}) {
   await writeFile(join(root, "package.json"), JSON.stringify({ version: VERSION }));
   await writeFile(join(root, `docs/releases/v${VERSION}.md`), "# Preview\n");
 
-  const artifactNames = expectedPublicArtifactNames(VERSION, notarized);
+  const artifactNames = expectedPublicArtifactNames(VERSION, notarized || developmentSigned);
   const binaryNames = artifactNames.filter((name) => name !== "alpha-mac.yml");
   for (const name of binaryNames) await writeFile(join(directory, name), `fixture:${name}`);
   const zipName = `Koyori-${VERSION}-arm64.zip`;
@@ -65,7 +65,8 @@ async function fixture({ notarized = true, developmentSigned = false } = {}) {
     sha512: await digest(join(directory, zipName), "sha512", "base64"),
     releaseDate: "2026-09-22T12:00:00.000Z",
   };
-  if (notarized) await writeFile(join(directory, "alpha-mac.yml"), stringifyYaml(metadata));
+  if (notarized || developmentSigned)
+    await writeFile(join(directory, "alpha-mac.yml"), stringifyYaml(metadata));
   const artifacts = await Promise.all(
     artifactNames.map(async (file) => {
       const data = await readFile(join(directory, file));
@@ -84,7 +85,11 @@ async function fixture({ notarized = true, developmentSigned = false } = {}) {
     platform: "darwin",
     arch: "arm64",
     minimumSystemVersion: "13.0",
-    distribution: notarized ? "preview-candidate" : "manual-preview-candidate",
+    distribution: notarized
+      ? "preview-candidate"
+      : developmentSigned
+        ? "development-update-candidate"
+        : "manual-preview-candidate",
     signing: notarized ? "notarized" : developmentSigned ? "signed" : "unsigned",
     notarized,
     artifacts,
@@ -108,7 +113,7 @@ async function fixture({ notarized = true, developmentSigned = false } = {}) {
         application: "Koyori.app",
       };
     }),
-    upgrade: { status: "not-applicable", reason: "first-public-release" },
+    upgrade: { status: "not-tested", reason: "no-upgrade-test-evidence" },
   };
   await writeFile(join(directory, "acceptance.json"), `${JSON.stringify(acceptance, null, 2)}\n`);
   return { root, directory, candidate, candidatePath };
@@ -187,7 +192,7 @@ test("accepts an unsigned manual preview without updater metadata", async () => 
   assert.equal(catalog.installation, "manual");
 });
 
-test("accepts an Apple Development-signed manual preview without updater metadata", async () => {
+test("accepts an Apple Development-signed Preview with updater metadata", async () => {
   const setup = await fixture({ notarized: false, developmentSigned: true });
   const verified = await verifyPublishInput({
     root: setup.root,
@@ -196,13 +201,30 @@ test("accepts an Apple Development-signed manual preview without updater metadat
     version: VERSION,
   });
   assert.equal(verified.notarized, false);
+  assert.equal(verified.files.includes("alpha-mac.yml"), true);
   const catalog = await createPreviewCatalog({
     candidatePath: setup.candidatePath,
     publishedAt: "2026-09-22T13:00:00.000Z",
     outputPath: join(setup.root, "catalog/preview-mac-arm64.json"),
   });
   assert.equal(catalog.signing, "signed");
-  assert.equal(catalog.installation, "manual");
+  assert.equal(catalog.installation, "automatic");
+});
+
+test("rejects mismatched Apple Development update metadata", async () => {
+  const setup = await fixture({ notarized: false, developmentSigned: true });
+  const metadataPath = join(setup.directory, "alpha-mac.yml");
+  const metadata = await readFile(metadataPath, "utf8");
+  await writeFile(metadataPath, metadata.replace(`version: ${VERSION}`, "version: 0.1.0-alpha.9"));
+  await assert.rejects(
+    verifyPublishInput({
+      root: setup.root,
+      directory: setup.directory,
+      commit: COMMIT,
+      version: VERSION,
+    }),
+    /does not match candidate|version must be/u,
+  );
 });
 
 test("local archive checks can inspect a dirty build without making it publishable", async () => {
@@ -434,10 +456,24 @@ test("release continuation allows only matching drafts and immutable published p
     () => planReleaseContinuation({ ...base, release, remoteFiles: ["other.json"] }),
     /unexpected/u,
   );
+  assert.equal(
+    planReleaseContinuation({
+      ...base,
+      release,
+      publishedTags: ["v0.1.0-alpha.0"],
+      remoteFiles: files,
+    }).action,
+    "publish",
+  );
   assert.throws(
     () =>
-      planReleaseContinuation({ ...base, release, publishedTags: ["v0.0.1"], remoteFiles: files }),
-    /another published Release/u,
+      planReleaseContinuation({
+        ...base,
+        release,
+        publishedTags: ["v0.1.0-alpha.2"],
+        remoteFiles: files,
+      }),
+    /not older/u,
   );
 });
 

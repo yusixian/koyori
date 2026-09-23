@@ -81,8 +81,15 @@ export function parseReleaseManifest(input: unknown): ReleaseManifest {
   if (input.installation !== "automatic" && input.installation !== "manual") {
     invalid("installation", "must be automatic or manual");
   }
-  if (input.installation === "automatic" && input.signing !== "notarized") {
-    invalid("installation", "automatic installation requires notarized signing");
+  if (input.installation === "automatic" && input.signing === "unsigned") {
+    invalid("installation", "automatic installation requires signed artifacts");
+  }
+  if (
+    input.installation === "automatic" &&
+    input.signing === "signed" &&
+    input.channel !== "preview"
+  ) {
+    invalid("installation", "development-signed updates require the preview channel");
   }
 
   const releaseNotesUrl = requireString(input.releaseNotesUrl, "releaseNotesUrl");

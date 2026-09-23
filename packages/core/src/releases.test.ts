@@ -104,23 +104,42 @@ describe("parseReleaseManifest", () => {
     expect(parseReleaseManifest(value)).toMatchObject({ version, channel: "stable" });
   });
 
-  it("allows automatic installation only with notarized signing", () => {
+  it("allows signed Preview updates and notarized updates", () => {
     const value = inputManifest({ installation: "automatic", signing: "notarized" });
 
     expect(parseReleaseManifest(value)).toMatchObject({
       installation: "automatic",
       signing: "notarized",
     });
+    expect(
+      parseReleaseManifest(inputManifest({ installation: "automatic", signing: "signed" })),
+    ).toMatchObject({
+      installation: "automatic",
+      signing: "signed",
+      channel: "preview",
+    });
   });
 
-  it.each(["unsigned", "signed"] as const)(
-    "rejects automatic installation with %s signing",
-    (signing) => {
-      expect(() =>
-        parseReleaseManifest(inputManifest({ installation: "automatic", signing })),
-      ).toThrow(/automatic installation requires notarized signing/);
-    },
-  );
+  it("rejects unsigned updates and development-signed stable updates", () => {
+    expect(() => parseReleaseManifest(inputManifest({ installation: "automatic" }))).toThrow(
+      /requires signed artifacts/,
+    );
+    expect(() =>
+      parseReleaseManifest(
+        inputManifest({
+          version: "0.1.0",
+          channel: "stable",
+          signing: "signed",
+          installation: "automatic",
+          releaseNotesUrl: "https://github.com/yusixian/koyori/releases/tag/v0.1.0",
+          download: {
+            ...manifest().download,
+            url: "https://github.com/yusixian/koyori/releases/download/v0.1.0/Koyori-0.1.0-arm64.dmg",
+          },
+        }),
+      ),
+    ).toThrow(/preview channel/);
+  });
 });
 
 describe("getReleaseChannel", () => {
