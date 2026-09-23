@@ -2,6 +2,7 @@ import type {
   ResourceRoot,
   SkillDiscussionDraft,
   SkillInventory,
+  SkillPreferenceCard,
   UsageEvent,
   UsageImport,
   UsageImportCache,
@@ -30,6 +31,13 @@ const mocks = vi.hoisted(() => ({
   readCollectionState: vi.fn(),
   writeCollectionState: vi.fn(),
   showOpenDialog: vi.fn(),
+  realpath: vi.fn(),
+  stat: vi.fn(),
+}));
+
+vi.mock("node:fs/promises", () => ({
+  realpath: mocks.realpath,
+  stat: mocks.stat,
 }));
 
 vi.mock("electron", () => ({
@@ -205,6 +213,17 @@ beforeEach(() => {
   mocks.writeCollectionState.mockReset();
   mocks.writeCollectionState.mockResolvedValue(undefined);
   mocks.showOpenDialog.mockReset();
+  mocks.realpath.mockReset();
+  mocks.realpath.mockImplementation(async (path: string) => path);
+  mocks.stat.mockReset();
+  mocks.stat.mockResolvedValue({
+    isFile: () => true,
+    dev: 1,
+    ino: 1,
+    size: 8,
+    mtimeMs: 1,
+    ctimeMs: 1,
+  });
   vi.useFakeTimers();
   vi.setSystemTime(now);
 });
@@ -260,6 +279,102 @@ describe("usage controller boundaries", () => {
       "Unauthorized window",
     );
     expect(trusted).toHaveBeenCalledOnce();
+  });
+
+  it("previews and confirms only a selected Skill preference action", async () => {
+    mocks.readUsageState.mockResolvedValue(state());
+    await createUsageController(dependencies(() => [root]));
+    const card = (await ipc("usage:preference:plan")(
+      event(),
+      "skill-writer",
+      "review-later",
+    )) as SkillPreferenceCard;
+    expect(card).toMatchObject({
+      skillId: "skill-writer",
+      action: "review-later",
+      current: null,
+      result: { keep: false, firstSeenAt: now, reviewAfter: "2026-10-22T12:00:00.000Z" },
+    });
+    expect(mocks.writeUsageState).not.toHaveBeenCalled();
+    const result = (await ipc("usage:preference:confirm")(event(), card.id)) as UsageView;
+    expect(result.preferences["skill-writer"]).toEqual(card.result);
+    expect(mocks.writeUsageState).toHaveBeenCalledOnce();
+    await expect(ipc("usage:preference:confirm")(event(), card.id)).rejects.toThrow(
+      "no longer available",
+    );
+  });
+
+  it("rejects preference cards after a preference change, root removal or expiry", async () => {
+    let roots = [root];
+    mocks.readUsageState.mockResolvedValue(state());
+    await createUsageController(dependencies(() => roots));
+
+    const stalePreference = (await ipc("usage:preference:plan")(
+      event(),
+      "skill-writer",
+      "keep",
+    )) as SkillPreferenceCard;
+    await ipc("usage:preference")(event(), "skill-writer", { keep: false }, 90);
+    await expect(ipc("usage:preference:confirm")(event(), stalePreference.id)).rejects.toThrow(
+      "Preference changed",
+    );
+
+    const disconnected = (await ipc("usage:preference:plan")(
+      event(),
+      "skill-writer",
+      "keep",
+    )) as SkillPreferenceCard;
+    roots = [];
+    await expect(ipc("usage:preference:confirm")(event(), disconnected.id)).rejects.toThrow(
+      "Resource is no longer connected",
+    );
+    roots = [root];
+
+    const expired = (await ipc("usage:preference:plan")(
+      event(),
+      "skill-writer",
+      "keep",
+    )) as SkillPreferenceCard;
+    vi.advanceTimersByTime(5 * 60_000);
+    await expect(ipc("usage:preference:confirm")(event(), expired.id)).rejects.toThrow("expired");
+    expect(mocks.writeUsageState).toHaveBeenCalledOnce();
+  });
+
+  it("rejects a card when the selected Skill file changes after preview", async () => {
+    mocks.readUsageState.mockResolvedValue(state());
+    await createUsageController(dependencies(() => [root]));
+    const card = (await ipc("usage:preference:plan")(
+      event(),
+      "skill-writer",
+      "keep",
+    )) as SkillPreferenceCard;
+    mocks.stat.mockResolvedValue({
+      isFile: () => true,
+      dev: 1,
+      ino: 1,
+      size: 9,
+      mtimeMs: 2,
+      ctimeMs: 2,
+    });
+    await expect(ipc("usage:preference:confirm")(event(), card.id)).rejects.toThrow(
+      "Resource changed",
+    );
+    expect(mocks.writeUsageState).not.toHaveBeenCalled();
+  });
+
+  it("does not accept arbitrary action parameters or an untrusted confirmation", async () => {
+    const trusted = vi.fn(() => {
+      throw new Error("Unauthorized window");
+    });
+    mocks.readUsageState.mockResolvedValue(state());
+    await createUsageController(dependencies(() => [root], trusted));
+    await expect(ipc("usage:preference:plan")(event(), "skill-writer", "delete")).rejects.toThrow(
+      "Unauthorized window",
+    );
+    await expect(ipc("usage:preference:confirm")(event(), "fake")).rejects.toThrow(
+      "Unauthorized window",
+    );
+    expect(mocks.writeUsageState).not.toHaveBeenCalled();
   });
 
   it("masks a revoked resource root immediately while retaining collected events", async () => {

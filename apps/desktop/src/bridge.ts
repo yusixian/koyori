@@ -6,6 +6,8 @@ import type {
   ResourceRoot,
   SkillDiscussionDraft,
   SkillInventory,
+  SkillPreferenceAction,
+  SkillPreferenceCard,
   UsageRules,
   UsageView,
 } from "@koyori/core";
@@ -144,6 +146,8 @@ export interface KoyoriBridge {
   openProject(): Promise<void>;
   getUsage(windowDays?: 30 | 90): Promise<UsageView>;
   prepareSkillDiscussion(skillId: string, windowDays?: 30 | 90): Promise<SkillDiscussionDraft>;
+  planSkillPreference(skillId: string, action: SkillPreferenceAction): Promise<SkillPreferenceCard>;
+  confirmSkillPreference(cardId: string): Promise<UsageView>;
   addHistorySource(rootId: string): Promise<HistorySource | null>;
   disconnectHistorySource(id: string): Promise<void>;
   importUsage(windowDays?: 30 | 90): Promise<UsageView>;

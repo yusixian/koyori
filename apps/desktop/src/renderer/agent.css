@@ -321,6 +321,37 @@
   box-shadow: 0 6px 18px #5d31400b;
 }
 
+.agent-preference-card {
+  min-width: 0;
+  margin-bottom: 14px;
+  border: 1px solid #d9e7de;
+  border-radius: 12px;
+  padding: 16px 18px;
+  background: #f8fcf9;
+}
+
+.agent-preference-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.agent-preference-preview {
+  margin-top: 13px;
+  border: 1px solid #d8e7df;
+  border-radius: 9px;
+  padding: 12px;
+  background: #fff;
+}
+
+.agent-preference-preview p {
+  overflow-wrap: anywhere;
+  margin: 4px 0;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
 .agent-discussion-heading,
 .agent-discussion-actions {
   display: flex;

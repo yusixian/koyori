@@ -1,4 +1,9 @@
-import type { SkillDiscussionDraft } from "@koyori/core";
+import type {
+  SkillDiscussionDraft,
+  SkillPreference,
+  SkillPreferenceAction,
+  SkillPreferenceCard,
+} from "@koyori/core";
 import {
   Bot,
   CircleStop,
@@ -53,6 +58,13 @@ function formatSnapshotTime(value: string) {
   }).format(date);
 }
 
+function preferenceLabel(value: SkillPreference | null) {
+  if (!value) return "未设置保留或复查偏好";
+  return `${value.keep ? "始终保留" : "未标记始终保留"} · ${
+    value.reviewAfter ? `${formatSnapshotTime(value.reviewAfter)} 复查` : "无复查日期"
+  } · 初次发现 ${formatSnapshotTime(value.firstSeenAt)}`;
+}
+
 function messageState(message: AgentMessage) {
   if (message.status === "streaming") return "正在回复";
   if (message.status === "cancelled") return "已停止";
@@ -86,6 +98,10 @@ export function AgentPanel({ pendingDiscussion, onDismissDiscussion }: AgentPane
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [discussionError, setDiscussionError] = useState("");
+  const [discussionSkill, setDiscussionSkill] = useState<SkillDiscussionDraft | null>(null);
+  const [preferenceCard, setPreferenceCard] = useState<SkillPreferenceCard | null>(null);
+  const [preferenceBusy, setPreferenceBusy] = useState(false);
+  const [preferenceNotice, setPreferenceNotice] = useState("");
   const requestRef = useRef(0);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
@@ -145,6 +161,13 @@ export function AgentPanel({ pendingDiscussion, onDismissDiscussion }: AgentPane
       ? `${draft}\n\n${pendingDiscussion.text}`
       : pendingDiscussion.text
     : "";
+  const actionableSkill = pendingDiscussion ?? discussionSkill;
+
+  useEffect(() => {
+    if (!pendingDiscussion) return;
+    setPreferenceCard(null);
+    setPreferenceNotice("");
+  }, [pendingDiscussion]);
   const discussionTooLong = discussionDraft.length > agentMessageCharacterLimit;
   const canAppendDiscussion = Boolean(
     pendingDiscussion &&
@@ -340,6 +363,7 @@ export function AgentPanel({ pendingDiscussion, onDismissDiscussion }: AgentPane
       return;
     }
     setDraft(discussionDraft);
+    setDiscussionSkill(pendingDiscussion);
     setDiscussionError("");
     onDismissDiscussion();
     requestAnimationFrame(() => composerRef.current?.focus());
@@ -347,7 +371,38 @@ export function AgentPanel({ pendingDiscussion, onDismissDiscussion }: AgentPane
 
   function dismissDiscussion() {
     setDiscussionError("");
+    setDiscussionSkill(null);
+    setPreferenceCard(null);
     onDismissDiscussion();
+  }
+
+  async function planPreference(action: SkillPreferenceAction) {
+    if (!actionableSkill || preferenceBusy) return;
+    setPreferenceBusy(true);
+    setPreferenceCard(null);
+    setPreferenceNotice("");
+    try {
+      setPreferenceCard(await window.koyori.planSkillPreference(actionableSkill.skillId, action));
+    } catch {
+      setPreferenceNotice("操作卡未能生成。请回到 Skills 核对资源状态后重试。");
+    } finally {
+      setPreferenceBusy(false);
+    }
+  }
+
+  async function confirmPreference() {
+    if (!preferenceCard || preferenceBusy) return;
+    setPreferenceBusy(true);
+    const card = preferenceCard;
+    try {
+      await window.koyori.confirmSkillPreference(card.id);
+      setPreferenceNotice(`已保存“${card.skillName}”的偏好。`);
+    } catch {
+      setPreferenceNotice("未保存：资源、偏好或操作卡已变化，或写入失败。请重新生成操作卡核对。");
+    } finally {
+      setPreferenceCard(null);
+      setPreferenceBusy(false);
+    }
   }
 
   if (!view) {
@@ -608,6 +663,72 @@ export function AgentPanel({ pendingDiscussion, onDismissDiscussion }: AgentPane
               丢弃摘要
             </button>
           </div>
+        </section>
+      )}
+
+      {actionableSkill && (
+        <section className="agent-preference-card" aria-label="Skill 本地操作卡">
+          <div className="agent-discussion-heading">
+            <div>
+              <p className="agent-kicker">LOCAL ACTION</p>
+              <h2>{actionableSkill.skillName} · 整理偏好</h2>
+            </div>
+          </div>
+          <p className="agent-discussion-boundary">
+            由你选定的 Skill 生成本机操作卡。模型回复不会改变提案；预览后仍需你确认。
+          </p>
+          <div className="agent-preference-choices">
+            <button
+              type="button"
+              className="agent-button"
+              disabled={preferenceBusy}
+              onClick={() => void planPreference("keep")}
+            >
+              始终保留
+            </button>
+            <button
+              type="button"
+              className="agent-button"
+              disabled={preferenceBusy}
+              onClick={() => void planPreference("review-later")}
+            >
+              30 天后复查
+            </button>
+          </div>
+          {preferenceCard && (
+            <div className="agent-preference-preview">
+              <p>目标：{preferenceCard.skillName}</p>
+              <p>当前：{preferenceLabel(preferenceCard.current)}</p>
+              <p>确认后：{preferenceLabel(preferenceCard.result)}</p>
+              <p>
+                有效至：{formatSnapshotTime(preferenceCard.expiresAt)}
+                。确认时重新核对资源与当前偏好。
+              </p>
+              <div className="agent-discussion-actions">
+                <button
+                  type="button"
+                  className="agent-button agent-primary-button"
+                  disabled={preferenceBusy}
+                  onClick={() => void confirmPreference()}
+                >
+                  {preferenceBusy ? "正在核对" : "确认保存偏好"}
+                </button>
+                <button
+                  type="button"
+                  className="agent-text-button"
+                  disabled={preferenceBusy}
+                  onClick={() => setPreferenceCard(null)}
+                >
+                  取消
+                </button>
+              </div>
+            </div>
+          )}
+          {preferenceNotice && (
+            <p className="agent-discussion-warning" role="status">
+              {preferenceNotice}
+            </p>
+          )}
         </section>
       )}
 

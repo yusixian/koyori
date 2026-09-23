@@ -13,6 +13,8 @@ export {
 export { scanSkills } from "./scan-skills.ts";
 export type { SkillDiscussionDraft } from "./skill-discussion.ts";
 export { buildSkillDiscussion } from "./skill-discussion.ts";
+export type { SkillPreferenceAction, SkillPreferenceCard } from "./skill-preference-card.ts";
+export { preferenceAfterAction } from "./skill-preference-card.ts";
 export type {
   ClientId,
   ResourceRoot,
