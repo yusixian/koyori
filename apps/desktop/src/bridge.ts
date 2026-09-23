@@ -19,6 +19,7 @@ export interface SourceTarget {
   path: string;
   label: string;
   shared: boolean;
+  scope?: "user" | "project" | "system";
 }
 export interface WorkspaceView {
   roots: ResourceRoot[];
@@ -46,7 +47,7 @@ export interface CollectionView {
 }
 export interface ManagementPlanPreview {
   id: string;
-  kind: "sync" | "restore";
+  kind: "sync" | "restore" | "project-deploy" | "project-revoke";
   expiresAt: string;
   items: {
     name: string;
@@ -83,6 +84,16 @@ export interface ManagementView {
   operations: OperationRecord[];
   busy: boolean;
   lastResult: string | null;
+  projectDeployments: {
+    id: string;
+    status: "active" | "revoked";
+    projectPath: string;
+    targetRoot: string;
+    targetPath: string;
+    sourcePath: string;
+    createdAt: string;
+    recoveryPath?: string;
+  }[];
 }
 
 export type UpdateStatus =
@@ -163,6 +174,8 @@ export interface KoyoriBridge {
   setCollection(enabled: boolean, candidateIds?: string[]): Promise<CollectionView>;
   getManagement(): Promise<ManagementView>;
   planSync(skillIds: string[], targetId: string, replace: boolean): Promise<ManagementPlanPreview>;
+  planProjectDeploy(skillId: string, targetId: string): Promise<ManagementPlanPreview>;
+  planProjectRevoke(deploymentId: string): Promise<ManagementPlanPreview>;
   planRestore(
     backupId: string,
     targetId: string | null,

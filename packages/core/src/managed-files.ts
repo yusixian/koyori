@@ -39,6 +39,9 @@ import type {
   PlanRestoreOptions,
   PortableBackupManifest,
   PortableBackupResult,
+  ProjectDeployInput,
+  ProjectDeployment,
+  ProjectDeploymentPlan,
   RecoveryMaterialState,
   RestorePlan,
   RestorePlanItem,
@@ -835,7 +838,7 @@ function assertOperation(value: unknown, source: string): asserts value is Opera
     !isRecord(value) ||
     typeof value.id !== "string" ||
     typeof value.planId !== "string" ||
-    !["sync", "restore"].includes(String(value.kind)) ||
+    !["sync", "restore", "project-deploy", "project-revoke"].includes(String(value.kind)) ||
     !["running", "succeeded", "partial", "failed", "cancelled", "interrupted"].includes(
       String(value.status),
     ) ||
@@ -888,11 +891,14 @@ async function createManagementStoreInternal(
   const backupsDirectory = join(stateDirectory, "backups");
   const operationsDirectory = join(stateDirectory, "operations");
   const recoveriesDirectory = join(stateDirectory, "recoveries");
+  const deploymentsDirectory = join(stateDirectory, "project-deployments");
   const lockPath = join(stateDirectory, "mutation.lock");
   await mkdir(backupsDirectory, { recursive: true });
   await mkdir(operationsDirectory, { recursive: true });
   await mkdir(recoveriesDirectory, { recursive: true });
+  await mkdir(deploymentsDirectory, { recursive: true });
   const plans = new Map<string, PlannedState>();
+  const projectPlans = new Map<string, ProjectDeploymentPlan>();
   let localMutation = false;
 
   function processIsAlive(pid: number): boolean {
@@ -1376,7 +1382,335 @@ async function createManagementStoreInternal(
     }
   }
 
+  function projectTargetRoot(
+    projectPath: string,
+    client: ProjectDeployment["targetClient"],
+  ): string {
+    return join(projectPath, client === "claude-code" ? ".claude" : ".agents", "skills");
+  }
+
+  function assertProjectLocation(
+    projectPath: string,
+    targetRoot: string,
+    client: ProjectDeployment["targetClient"],
+  ): void {
+    if (projectTargetRoot(projectPath, client) !== targetRoot) {
+      throw new ManagementError(
+        "invalid-input",
+        "Project target is not the selected client's project Skills directory.",
+      );
+    }
+  }
+
+  function assertProjectDeployment(
+    value: unknown,
+    path: string,
+  ): asserts value is ProjectDeployment {
+    if (
+      !isRecord(value) ||
+      typeof value.id !== "string" ||
+      !/^[0-9a-f-]{36}$/i.test(value.id) ||
+      (value.status !== "active" && value.status !== "revoked") ||
+      typeof value.projectPath !== "string" ||
+      !isAbsolute(value.projectPath) ||
+      typeof value.targetRoot !== "string" ||
+      !isAbsolute(value.targetRoot) ||
+      (value.targetClient !== "claude-code" && value.targetClient !== "codex") ||
+      typeof value.sourcePath !== "string" ||
+      !isAbsolute(value.sourcePath) ||
+      typeof value.targetPath !== "string" ||
+      !isAbsolute(value.targetPath) ||
+      !isRecord(value.installedRevision) ||
+      value.installedRevision.kind !== "directory" ||
+      typeof value.installedRevision.realPath !== "string" ||
+      !isAbsolute(value.installedRevision.realPath) ||
+      typeof value.installedRevision.manifestHash !== "string" ||
+      !/^[0-9a-f]{64}$/.test(value.installedRevision.manifestHash) ||
+      typeof value.installedRevision.files !== "number" ||
+      typeof value.installedRevision.bytes !== "number" ||
+      typeof value.createdAt !== "string"
+    )
+      throw new ManagementError("corrupt-data", `Invalid project deployment: ${path}`);
+    assertProjectLocation(value.projectPath, value.targetRoot, value.targetClient);
+    if (
+      dirname(value.targetPath) !== value.targetRoot ||
+      !isSafeDirectoryName(basename(value.targetPath))
+    ) {
+      throw new ManagementError("corrupt-data", `Invalid project deployment target: ${path}`);
+    }
+  }
+
+  async function readProjectDeployment(id: string): Promise<ProjectDeployment> {
+    if (!/^[0-9a-f-]{36}$/i.test(id))
+      throw new ManagementError("invalid-input", "Invalid project deployment id.");
+    const path = join(deploymentsDirectory, `${id}.json`);
+    let value: unknown;
+    try {
+      value = await readJson(path);
+    } catch (error) {
+      if (errorCode(error) === "ENOENT")
+        throw new ManagementError("missing", "Project deployment does not exist.");
+      throw error;
+    }
+    assertProjectDeployment(value, path);
+    if (value.id !== id)
+      throw new ManagementError("corrupt-data", `Project deployment id mismatch: ${path}`);
+    return value;
+  }
+
+  async function persistProjectDeployment(value: ProjectDeployment): Promise<void> {
+    await atomicWriteJson(join(deploymentsDirectory, `${value.id}.json`), value);
+  }
+
+  async function listProjectDeployments(): Promise<ProjectDeployment[]> {
+    const entries = await readdir(deploymentsDirectory, { withFileTypes: true });
+    const records: ProjectDeployment[] = [];
+    for (const entry of entries) {
+      if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
+      records.push(await readProjectDeployment(entry.name.slice(0, -5)));
+    }
+    return records.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  }
+
+  function rememberProjectPlan(plan: ProjectDeploymentPlan): ProjectDeploymentPlan {
+    for (const [id, pending] of projectPlans)
+      if (Date.parse(pending.expiresAt) <= Date.now()) projectPlans.delete(id);
+    if (projectPlans.size >= 100) projectPlans.clear();
+    projectPlans.set(plan.id, plan);
+    return plan;
+  }
+
   const store: ManagementStore = {
+    listProjectDeployments,
+
+    async planProjectDeploy(input: ProjectDeployInput) {
+      checkAbort(input.signal);
+      if (input.targetClient !== "claude-code" && input.targetClient !== "codex")
+        throw new ManagementError("invalid-input", "Unsupported project target client.");
+      const projectPath = requireAbsolutePath(input.projectPath, "Project");
+      const targetRoot = requireAbsolutePath(input.targetRoot, "Project Skills root");
+      const sourcePath = requireAbsolutePath(input.source, "Source");
+      assertProjectLocation(projectPath, targetRoot, input.targetClient);
+      const targetPath = join(targetRoot, basename(sourcePath));
+      if (!isSafeDirectoryName(basename(sourcePath)))
+        throw new ManagementError("invalid-input", "Invalid Skill directory name.");
+      const roots = await resolveAuthorizedRoots(options);
+      const source = await scanDirectory(sourcePath, roots, limits, {
+        requireSkill: true,
+        includeContent: false,
+        signal: input.signal,
+      });
+      const inspected = await inspectPath(targetPath, roots, limits, { signal: input.signal });
+      const existing = (await listProjectDeployments()).find(
+        (item) => item.status === "active" && item.targetPath === targetPath,
+      );
+      const conflict = existing
+        ? "This target is already managed by Koyori."
+        : inspected.revision.kind !== "absent"
+          ? "A Skill already exists at this project target; Koyori will not take ownership of it."
+          : undefined;
+      const created = Date.now();
+      const plan: ProjectDeploymentPlan = {
+        id: randomUUID(),
+        kind: "project-deploy",
+        expiresAt: new Date(created + limits.planTtlMs).toISOString(),
+        executable: !conflict,
+        projectPath,
+        targetRoot,
+        targetClient: input.targetClient,
+        targetPath,
+        sourcePath,
+        sourceRevision: source.revision,
+        targetRevision: inspected.revision,
+        files: source.manifest.files,
+        bytes: source.manifest.bytes,
+        ...(conflict ? { conflict } : {}),
+        compatibilityWarnings: compatibilityWarnings(
+          {
+            source: sourcePath,
+            target: targetPath,
+            sourceClient: input.sourceClient,
+            targetClient: input.targetClient,
+            allowReplace: false,
+          },
+          source.skillContent,
+        ),
+      };
+      return rememberProjectPlan(plan);
+    },
+
+    async planProjectRevoke(deploymentId, signal) {
+      checkAbort(signal);
+      const record = await readProjectDeployment(deploymentId);
+      const roots = await resolveAuthorizedRoots(options);
+      const current = await inspectPath(record.targetPath, roots, limits, { signal });
+      const conflict =
+        record.status !== "active"
+          ? "This deployment was already revoked."
+          : !revisionsEqual(current.revision, record.installedRevision)
+            ? "Project Skill changed outside Koyori; inspect it before revoking."
+            : undefined;
+      const plan: ProjectDeploymentPlan = {
+        id: randomUUID(),
+        kind: "project-revoke",
+        expiresAt: new Date(Date.now() + limits.planTtlMs).toISOString(),
+        executable: !conflict,
+        projectPath: record.projectPath,
+        targetRoot: record.targetRoot,
+        targetClient: record.targetClient,
+        targetPath: record.targetPath,
+        deploymentId: record.id,
+        targetRevision: current.revision,
+        files: record.installedRevision.files,
+        bytes: record.installedRevision.bytes,
+        ...(conflict ? { conflict } : {}),
+        compatibilityWarnings: [],
+      };
+      return rememberProjectPlan(plan);
+    },
+
+    async executeProjectPlan(planId, executeOptions: ExecuteOptions = {}) {
+      const plan = projectPlans.get(planId);
+      if (!plan) throw new ManagementError("missing", "Project plan is unknown to this process.");
+      projectPlans.delete(planId);
+      if (Date.now() > Date.parse(plan.expiresAt))
+        throw new ManagementError("expired-plan", "Project plan expired.");
+      if (!plan.executable)
+        throw new ManagementError("conflict", plan.conflict ?? "Project plan has a conflict.");
+      return withMutation(async () => {
+        const operation: OperationRecord = {
+          id: randomUUID(),
+          planId,
+          kind: plan.kind,
+          status: "running",
+          startedAt: new Date().toISOString(),
+          items: [
+            {
+              id: randomUUID(),
+              target: plan.targetPath,
+              action: plan.kind === "project-deploy" ? "copy" : "revoke",
+              status: "pending",
+            },
+          ],
+        };
+        const item = operation.items[0] as OperationItemRecord;
+        await persistOperation(operation);
+        try {
+          checkAbort(executeOptions.signal);
+          const roots = await resolveAuthorizedRoots(options);
+          if (plan.kind === "project-deploy") {
+            if (!plan.sourcePath || !plan.sourceRevision)
+              throw new ManagementError("corrupt-data", "Project deployment plan lacks a source.");
+            const existing = (await listProjectDeployments()).find(
+              (entry) => entry.status === "active" && entry.targetPath === plan.targetPath,
+            );
+            if (existing)
+              throw new ManagementError("conflict", "Project target is already managed by Koyori.");
+            const source = await scanDirectory(plan.sourcePath, roots, limits, {
+              requireSkill: true,
+              includeContent: true,
+              signal: executeOptions.signal,
+            });
+            if (!revisionsEqual(source.revision, plan.sourceRevision))
+              throw new ManagementError(
+                "conflict",
+                "Source changed after project plan was created.",
+              );
+            // Finish ownership registration once installation starts, even if cancellation arrives.
+            checkAbort(executeOptions.signal);
+            await installDirectory(
+              source,
+              plan.targetPath,
+              "copy",
+              plan.targetRevision,
+              roots,
+              async () => {},
+            );
+            const installed = await inspectPath(plan.targetPath, roots, limits);
+            if (installed.revision.kind !== "directory")
+              throw new ManagementError("conflict", "Installed project Skill is missing.");
+            if (installed.revision.manifestHash !== materializeManifest(source.manifest).hash)
+              throw new ManagementError(
+                "conflict",
+                "Installed project Skill changed before its ownership record could be saved.",
+              );
+            await persistProjectDeployment({
+              id: randomUUID(),
+              status: "active",
+              projectPath: plan.projectPath,
+              targetRoot: plan.targetRoot,
+              targetClient: plan.targetClient,
+              sourcePath: plan.sourcePath,
+              targetPath: plan.targetPath,
+              installedRevision: installed.revision,
+              createdAt: new Date().toISOString(),
+            });
+          } else {
+            if (!plan.deploymentId)
+              throw new ManagementError(
+                "corrupt-data",
+                "Project revoke plan lacks a deployment id.",
+              );
+            const record = await readProjectDeployment(plan.deploymentId);
+            if (
+              record.status !== "active" ||
+              record.projectPath !== plan.projectPath ||
+              record.targetRoot !== plan.targetRoot ||
+              record.targetPath !== plan.targetPath
+            )
+              throw new ManagementError(
+                "conflict",
+                "Project deployment record changed after planning.",
+              );
+            const current = await revalidateTarget(
+              plan.targetPath,
+              record.installedRevision,
+              roots,
+              executeOptions.signal,
+            );
+            if (current.revision.kind !== "directory")
+              throw new ManagementError("conflict", "Project Skill is no longer a directory.");
+            const recoveryPath = join(recoveriesDirectory, `project-${record.id}-${randomUUID()}`);
+            item.recoveryPath = recoveryPath;
+            item.recoveryState = "reserved";
+            await persistOperation(operation);
+            // Once moved, complete the recovery record instead of cancelling between writes.
+            checkAbort(executeOptions.signal);
+            await rename(plan.targetPath, recoveryPath);
+            item.recoveryState = "preserved";
+            await persistOperation(operation);
+            const preserved = await scanDirectory(
+              recoveryPath,
+              roots.concat([await backupAuthorizedRoot(recoveryPath)]),
+              limits,
+              { requireSkill: true, includeContent: false },
+            );
+            if (preserved.manifest.hash !== record.installedRevision.manifestHash)
+              throw new ManagementError(
+                "conflict",
+                `Moved project Skill changed; recovery remains at ${recoveryPath}.`,
+              );
+            await persistProjectDeployment({
+              ...record,
+              status: "revoked",
+              revokedAt: new Date().toISOString(),
+              recoveryPath,
+            });
+          }
+          item.status = "succeeded";
+          operation.status = "succeeded";
+        } catch (error) {
+          item.status =
+            error instanceof ManagementError && error.code === "aborted" ? "cancelled" : "failed";
+          item.error = message(error);
+          operation.status = item.status === "cancelled" ? "cancelled" : "failed";
+          operation.error = message(error);
+        }
+        operation.completedAt = new Date().toISOString();
+        await persistOperation(operation);
+        return operation;
+      });
+    },
     async planSync(input) {
       checkAbort(input.signal);
       if (typeof input.allowReplace !== "boolean") {

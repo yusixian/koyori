@@ -56,6 +56,9 @@ const bridge: KoyoriBridge = {
   getManagement: () => ipcRenderer.invoke("management:get"),
   planSync: (ids, target, replace) =>
     ipcRenderer.invoke("management:sync:plan", ids, target, replace),
+  planProjectDeploy: (id, target) =>
+    ipcRenderer.invoke("management:project:deploy:plan", id, target),
+  planProjectRevoke: (id) => ipcRenderer.invoke("management:project:revoke:plan", id),
   planRestore: (id, target, replace) =>
     ipcRenderer.invoke("management:restore:plan", id, target, replace),
   executePlan: (id) => ipcRenderer.invoke("management:execute", id),

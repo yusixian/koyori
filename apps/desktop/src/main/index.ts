@@ -200,6 +200,7 @@ else {
           transferRoots: [join(dataDir, "remote-backup", "exports"), join(dataDir, "git-backup")],
           getRoots: () => workspace?.getRoots() ?? [],
           getTargets: () => workspace?.getTargets() ?? [],
+          getProjects: () => workspace?.getProjects() ?? [],
           getInventory: () => workspace?.getInventory() ?? null,
           resourceBusy: () =>
             Boolean(workspace?.isBusy() || usage?.isBusy() || remoteBackup?.isBusy()),

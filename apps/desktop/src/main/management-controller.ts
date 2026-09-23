@@ -3,7 +3,10 @@ import { basename, dirname, join, relative, sep } from "node:path";
 import type { OperationRecord, ResourceRoot, SkillInventory, SkillRecord } from "@koyori/core";
 import { ipcMain } from "electron";
 import { createManagementStore } from "../../../../packages/core/src/managed-files";
-import type { ManagementPlan } from "../../../../packages/core/src/management-types";
+import type {
+  ManagementPlan,
+  ProjectDeploymentPlan,
+} from "../../../../packages/core/src/management-types";
 import type { ManagementPlanPreview, ManagementView, SourceTarget } from "../bridge";
 
 interface Dependencies {
@@ -11,6 +14,7 @@ interface Dependencies {
   transferRoots?: string[];
   getRoots(): ResourceRoot[];
   getTargets(): SourceTarget[];
+  getProjects?(): string[];
   getInventory(): SkillInventory | null;
   resourceBusy(): boolean;
   trusted(event: Electron.IpcMainInvokeEvent): void;
@@ -34,7 +38,7 @@ export async function createManagementController(deps: Dependencies) {
   const plans = new Map<
     string,
     {
-      plans: ManagementPlan[];
+      plans: (ManagementPlan | ProjectDeploymentPlan)[];
       rootIds: string[];
       targetIds: string[];
       preview: ManagementPlanPreview;
@@ -45,7 +49,11 @@ export async function createManagementController(deps: Dependencies) {
   let lastResult: string | null = null;
 
   async function view(): Promise<ManagementView> {
-    const [backups, operations] = await Promise.all([store.listBackups(), store.listOperations()]);
+    const [backups, operations, projectDeployments] = await Promise.all([
+      store.listBackups(),
+      store.listOperations(),
+      store.listProjectDeployments(),
+    ]);
     return {
       busy,
       lastResult,
@@ -63,6 +71,7 @@ export async function createManagementController(deps: Dependencies) {
         })),
       })),
       operations: operations.slice(0, 20),
+      projectDeployments,
     };
   }
   function selected(value: unknown): SkillRecord[] {
@@ -85,12 +94,26 @@ export async function createManagementController(deps: Dependencies) {
     if (!result) throw new Error("同步目标不可用，请重新选择。");
     return result;
   }
+  function projectTarget(value: unknown): { target: SourceTarget; projectPath: string } {
+    const destination = target(value);
+    const projectPath = dirname(dirname(destination.path));
+    if (destination.scope !== "project" || !deps.getProjects?.().includes(projectPath)) {
+      throw new Error("目标不属于当前登记的项目，请重新选择。");
+    }
+    const expected = join(
+      projectPath,
+      destination.client === "claude-code" ? ".claude" : ".agents",
+      "skills",
+    );
+    if (destination.path !== expected) throw new Error("项目 Skills 目标目录不匹配。");
+    return { target: destination, projectPath };
+  }
   function boolean(value: unknown): boolean {
     if (typeof value !== "boolean") throw new Error("无效的替换选项。");
     return value;
   }
   function remember(
-    inner: ManagementPlan[],
+    inner: (ManagementPlan | ProjectDeploymentPlan)[],
     rootIds: string[],
     targetIds: string[],
     preview: Omit<ManagementPlanPreview, "id">,
@@ -176,6 +199,79 @@ export async function createManagementController(deps: Dependencies) {
       });
     },
   );
+  ipcMain.handle("management:project:deploy:plan", (event, skillId: unknown, targetId: unknown) => {
+    deps.trusted(event);
+    return operation(async (signal) => {
+      const skills = selected([skillId]);
+      const skill = skills[0];
+      if (!skill) throw new Error("请选择一项 Skill。");
+      const { target: destination, projectPath } = projectTarget(targetId);
+      const plan = await store.planProjectDeploy({
+        source: dirname(skill.path),
+        sourceClient: skill.client,
+        projectPath,
+        targetRoot: destination.path,
+        targetClient: destination.client,
+        signal,
+      });
+      return remember([plan], [skill.rootId], [destination.id], {
+        kind: "project-deploy",
+        expiresAt: plan.expiresAt,
+        canExecute: plan.executable,
+        items: [
+          {
+            name: skill.name,
+            source: plan.sourcePath ?? "",
+            target: plan.targetPath,
+            action: plan.executable ? "copy" : "conflict",
+            files: plan.files,
+            bytes: plan.bytes,
+          },
+        ],
+        warnings: [
+          "这是项目目录副本。原 Skill 若仍位于客户端的全局扫描目录，撤销项目副本也不会隐藏全局 Skill。",
+          ...plan.compatibilityWarnings.map((warning) => warning.message),
+          ...(plan.conflict ? [plan.conflict] : []),
+        ],
+      });
+    });
+  });
+  ipcMain.handle("management:project:revoke:plan", (event, deploymentId: unknown) => {
+    deps.trusted(event);
+    return operation(async (signal) => {
+      if (typeof deploymentId !== "string") throw new Error("无效的项目部署记录。");
+      const record = (await store.listProjectDeployments()).find(
+        (entry) => entry.id === deploymentId,
+      );
+      if (!record) throw new Error("项目部署记录不存在。");
+      const destination = deps
+        .getTargets()
+        .find((item) => item.path === record.targetRoot && item.client === record.targetClient);
+      if (!destination) throw new Error("项目目标已断开，请重新登记项目。");
+      const registered = projectTarget(destination.id);
+      if (registered.projectPath !== record.projectPath) throw new Error("项目登记位置已变化。");
+      const plan = await store.planProjectRevoke(record.id, signal);
+      return remember([plan], [], [destination.id], {
+        kind: "project-revoke",
+        expiresAt: plan.expiresAt,
+        canExecute: plan.executable,
+        items: [
+          {
+            name: basename(record.targetPath),
+            source: record.sourcePath,
+            target: record.targetPath,
+            action: plan.executable ? "revoke" : "conflict",
+            files: plan.files,
+            bytes: plan.bytes,
+          },
+        ],
+        warnings: [
+          "撤销只移走 Koyori 登记且内容未变化的项目副本，并在应用数据目录保留恢复材料。全局来源仍可能被客户端扫描。",
+          ...(plan.conflict ? [plan.conflict] : []),
+        ],
+      });
+    });
+  });
   ipcMain.handle(
     "management:restore:plan",
     (event, snapshotId: unknown, targetId: unknown, replace: unknown) => {
@@ -244,6 +340,13 @@ export async function createManagementController(deps: Dependencies) {
           )
         )
           throw new Error("来源或目标已经断开，请重新预览。");
+        for (const plan of record.plans) {
+          if (plan.kind === "project-deploy" || plan.kind === "project-revoke") {
+            const destination = deps.getTargets().find((item) => item.path === plan.targetRoot);
+            if (!destination || projectTarget(destination.id).projectPath !== plan.projectPath)
+              throw new Error("项目登记或目标已变化，请重新预览。");
+          }
+        }
         plans.delete(id);
         lastResult = null;
         let succeeded = 0,
@@ -253,7 +356,10 @@ export async function createManagementController(deps: Dependencies) {
           for (const [index, plan] of record.plans.entries()) {
             signal.throwIfAborted();
             attempted = true;
-            const result: OperationRecord = await store.execute(plan.id, { signal });
+            const result: OperationRecord =
+              plan.kind === "project-deploy" || plan.kind === "project-revoke"
+                ? await store.executeProjectPlan(plan.id, { signal })
+                : await store.execute(plan.id, { signal });
             succeeded += result.items.filter((item) => item.status === "succeeded").length;
             skipped += result.items.filter((item) => item.status === "skipped").length;
             failed += result.items.filter((item) =>

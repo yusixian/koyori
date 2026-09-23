@@ -12,6 +12,7 @@ const actions: Record<string, string> = {
   skip: "内容相同，跳过",
   conflict: "存在冲突",
   restore: "恢复",
+  revoke: "撤销项目副本并保留恢复材料",
 };
 const operationStatuses: Record<string, string> = {
   running: "进行中",
@@ -61,6 +62,7 @@ export function ManagementPanel({
 }) {
   const [selected, setSelected] = useState<string[]>(initialSkillId ? [initialSkillId] : []);
   const [targetId, setTargetId] = useState("");
+  const [projectTargetId, setProjectTargetId] = useState("");
   const [query, setQuery] = useState("");
   const [replace, setReplace] = useState(false);
   const [plan, setPlan] = useState<ManagementPlanPreview | null>(null);
@@ -82,6 +84,9 @@ export function ManagementPanel({
     targets.find((target) => target.id === targetId) ??
     targets.find((target) => target.client === "codex") ??
     targets[0];
+  const projectTargets = targets.filter((target) => target.scope === "project");
+  const effectiveProjectTarget =
+    projectTargets.find((target) => target.id === projectTargetId) ?? projectTargets[0];
   useEffect(() => {
     if (initialSkillId) {
       setSelected([initialSkillId]);
@@ -285,10 +290,97 @@ export function ManagementPanel({
           </button>
         </section>
       </div>
+      <section className="management-card" aria-label="项目 Skills 部署">
+        <div className="section-title">
+          <h2>部署到项目</h2>
+          <span>一次选择一项 Skill</span>
+        </div>
+        <p className="management-hint">
+          把完整 Skill 目录复制到已登记项目的客户端目录。已有同名目录不会被接管或替换。 原 Skill
+          如果仍在全局扫描目录，撤销项目副本后客户端仍可能看到它。
+        </p>
+        <label className="management-field">
+          项目目标
+          <select
+            aria-label="项目目标"
+            value={effectiveProjectTarget?.id ?? ""}
+            disabled={disabled}
+            onChange={(event) => {
+              setProjectTargetId(event.target.value);
+              invalidate();
+            }}
+          >
+            {projectTargets.map((target) => (
+              <option key={target.id} value={target.id}>
+                {clients[target.client]} · {target.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        {effectiveProjectTarget && (
+          <code className="management-path">{effectiveProjectTarget.path}</code>
+        )}
+        <button
+          type="button"
+          className="button primary"
+          disabled={disabled || effectiveSelection.length !== 1 || !effectiveProjectTarget}
+          onClick={() =>
+            void run(async () => {
+              const skillId = effectiveSelection[0];
+              if (!effectiveProjectTarget || effectiveSelection.length !== 1 || !skillId) return;
+              setReviewed(false);
+              setPlan(await window.koyori.planProjectDeploy(skillId, effectiveProjectTarget.id));
+            })
+          }
+        >
+          预览项目部署
+        </button>
+        {projectTargets.length === 0 && (
+          <p className="muted">请先在资源来源中登记项目，并刷新目录。</p>
+        )}
+        <hr />
+        <h2>受管项目副本</h2>
+        {(view?.projectDeployments ?? [])
+          .filter((entry) => entry.status === "active")
+          .map((entry) => (
+            <article className="backup-row" key={entry.id}>
+              <div>
+                <strong>{entry.targetPath.split("/").at(-1)}</strong>
+                <code>项目：{entry.projectPath}</code>
+                <code>来源：{entry.sourcePath}</code>
+                <code>目标：{entry.targetPath}</code>
+              </div>
+              <button
+                type="button"
+                className="button"
+                disabled={disabled}
+                onClick={() =>
+                  void run(async () => {
+                    setReviewed(false);
+                    setPlan(await window.koyori.planProjectRevoke(entry.id));
+                  })
+                }
+              >
+                预览撤销
+              </button>
+            </article>
+          ))}
+        {(view?.projectDeployments ?? []).filter((entry) => entry.status === "active").length ===
+          0 && <p className="muted">还没有 Koyori 登记的项目部署。</p>}
+      </section>
       {plan && (
         <section className="management-card plan-preview" aria-label="操作计划">
           <div className="section-title">
-            <h2>{plan.kind === "sync" ? "同步计划" : "恢复计划"}</h2>
+            <h2>
+              {
+                {
+                  sync: "同步计划",
+                  restore: "恢复计划",
+                  "project-deploy": "项目部署计划",
+                  "project-revoke": "项目撤销计划",
+                }[plan.kind]
+              }
+            </h2>
             <span>有效至 {new Date(plan.expiresAt).toLocaleTimeString("zh-CN")}</span>
           </div>
           <p className="management-hint">
@@ -339,7 +431,15 @@ export function ManagementPanel({
                 })
               }
             >
-              确认执行{plan.kind === "sync" ? "同步" : "恢复"}
+              确认执行
+              {
+                {
+                  sync: "同步",
+                  restore: "恢复",
+                  "project-deploy": "项目部署",
+                  "project-revoke": "项目撤销",
+                }[plan.kind]
+              }
             </button>
             <button type="button" className="text-button" disabled={disabled} onClick={invalidate}>
               取消计划
@@ -433,7 +533,16 @@ export function ManagementPanel({
           <details className="operation-row" key={operation.id}>
             <summary>
               <span>
-                <strong>{operation.kind === "sync" ? "同步" : "恢复"}</strong>
+                <strong>
+                  {
+                    {
+                      sync: "同步",
+                      restore: "恢复",
+                      "project-deploy": "项目部署",
+                      "project-revoke": "项目撤销",
+                    }[operation.kind]
+                  }
+                </strong>
                 <small>{new Date(operation.startedAt).toLocaleString("zh-CN")}</small>
               </span>
               <span>{operationStatuses[operation.status] ?? operation.status}</span>

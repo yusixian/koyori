@@ -48,6 +48,63 @@ async function writeSkill(
 }
 
 describe("managed Skill files", () => {
+  it("deploys only to an empty registered project target and retains the revoked copy", async () => {
+    const workspace = await temporaryDirectory();
+    const sourceRoot = join(workspace, "source");
+    const source = join(sourceRoot, "writer");
+    const projectPath = join(workspace, "project");
+    const targetRoot = join(projectPath, ".agents", "skills");
+    const target = join(targetRoot, "writer");
+    await writeSkill(source, "writer");
+    await writeFile(join(source, "asset.txt"), "resource", "utf8");
+    await mkdir(projectPath);
+    const store = await createManagementStore(join(workspace, "state"), {
+      authorizedRoots: () => [sourceRoot, targetRoot],
+    });
+    const input = { source, projectPath, targetRoot, targetClient: "codex" as const };
+    const planned = await store.planProjectDeploy(input);
+    expect(planned.executable).toBe(true);
+    expect((await store.executeProjectPlan(planned.id)).status).toBe("succeeded");
+    expect(await readFile(join(target, "asset.txt"), "utf8")).toBe("resource");
+    const deployment = (await store.listProjectDeployments())[0];
+    expect(deployment).toMatchObject({ status: "active", sourcePath: source, targetPath: target });
+    expect((await store.planProjectDeploy(input)).executable).toBe(false);
+
+    const revoke = await store.planProjectRevoke(deployment?.id ?? "");
+    expect(revoke.executable).toBe(true);
+    const operation = await store.executeProjectPlan(revoke.id);
+    expect(operation.status).toBe("succeeded");
+    await expect(stat(target)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await readFile(join(operation.items[0]?.recoveryPath ?? "", "asset.txt"), "utf8")).toBe(
+      "resource",
+    );
+    expect((await store.listProjectDeployments())[0]).toMatchObject({ status: "revoked" });
+    expect(await readFile(join(source, "asset.txt"), "utf8")).toBe("resource");
+  });
+
+  it("refuses project takeover and preserves externally edited deployments", async () => {
+    const workspace = await temporaryDirectory();
+    const sourceRoot = join(workspace, "source");
+    const source = join(sourceRoot, "writer");
+    const projectPath = join(workspace, "project");
+    const targetRoot = join(projectPath, ".claude", "skills");
+    const target = join(targetRoot, "writer");
+    await writeSkill(source, "writer");
+    await writeSkill(target, "writer", "external\n");
+    const store = await createManagementStore(join(workspace, "state"), {
+      authorizedRoots: () => [sourceRoot, targetRoot],
+    });
+    const input = { source, projectPath, targetRoot, targetClient: "claude-code" as const };
+    expect((await store.planProjectDeploy(input)).executable).toBe(false);
+    await rm(target, { recursive: true });
+    const plan = await store.planProjectDeploy(input);
+    expect((await store.executeProjectPlan(plan.id)).status).toBe("succeeded");
+    const deployment = (await store.listProjectDeployments())[0];
+    await writeFile(join(target, "SKILL.md"), "external edit", "utf8");
+    expect((await store.planProjectRevoke(deployment?.id ?? "")).executable).toBe(false);
+    expect(await readFile(join(target, "SKILL.md"), "utf8")).toBe("external edit");
+  });
+
   it("copies a complete Skill, preserves executable files, warns about compatibility, and skips identical content", async () => {
     const workspace = await temporaryDirectory();
     const claudeRoot = join(workspace, "claude");

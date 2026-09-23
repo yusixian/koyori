@@ -47,6 +47,7 @@ async function fixture() {
   let targets: SourceTarget[] = [
     { id: "target", path: destination, client: "codex", label: "target", shared: false },
   ];
+  let projects: string[] = [];
   const inventory = await scanSkills(roots);
   const refresh = vi.fn(async () => {});
   const trusted = vi.fn();
@@ -54,6 +55,7 @@ async function fixture() {
     dataDirectory: join(temporary, "state"),
     getRoots: () => roots,
     getTargets: () => targets,
+    getProjects: () => projects,
     getInventory: () => inventory,
     resourceBusy: () => false,
     trusted,
@@ -73,8 +75,55 @@ async function fixture() {
       roots = [];
       targets = [];
     },
+    registerProject: async () => {
+      const project = join(temporary, "project");
+      const path = join(project, ".agents", "skills");
+      await mkdir(project);
+      projects = [project];
+      targets = [
+        ...targets,
+        {
+          id: "project-target",
+          path,
+          client: "codex",
+          label: "project",
+          shared: true,
+          scope: "project",
+        },
+      ];
+      return { project, path };
+    },
   };
 }
+
+it("allows only registered project targets and revokes its unchanged managed copy", async () => {
+  const setup = await fixture();
+  await expect(invoke("management:project:deploy:plan", setup.ids[0], "target")).rejects.toThrow(
+    "登记的项目",
+  );
+  const project = await setup.registerProject();
+  const deploy = (await invoke(
+    "management:project:deploy:plan",
+    setup.ids[0],
+    "project-target",
+  )) as ManagementPlanPreview;
+  expect(deploy).toMatchObject({ kind: "project-deploy", canExecute: true });
+  expect(deploy.warnings.join(" ")).toContain("全局");
+  const deployed = (await invoke("management:execute", deploy.id)) as ManagementView;
+  expect(deployed.projectDeployments[0]).toMatchObject({
+    status: "active",
+    targetRoot: project.path,
+  });
+  const id = deployed.projectDeployments[0]?.id;
+  const revoke = (await invoke("management:project:revoke:plan", id)) as ManagementPlanPreview;
+  expect(revoke).toMatchObject({ kind: "project-revoke", canExecute: true });
+  const result = (await invoke("management:execute", revoke.id)) as ManagementView;
+  expect(result.projectDeployments[0]?.status).toBe("revoked");
+  expect(result.operations[0]?.items[0]?.recoveryPath).toEqual(expect.any(String));
+  await expect(readFile(join(project.path, "writer", "SKILL.md"))).rejects.toMatchObject({
+    code: "ENOENT",
+  });
+});
 
 it("previews complete folders, executes once, and reports copied files", async () => {
   const setup = await fixture();
