@@ -202,7 +202,7 @@ describe("managed Skill files", () => {
     });
   });
 
-  it("completes an interrupted deployment only for the staged directory identity", async () => {
+  it("reconciles a failed deployment immediately without losing its failure log", async () => {
     const workspace = await temporaryDirectory();
     const sourceRoot = join(workspace, "source");
     const source = join(sourceRoot, "writer");
@@ -219,8 +219,13 @@ describe("managed Skill files", () => {
     });
     const input = { source, projectPath, targetRoot, targetClient: "codex" as const };
     const plan = await interrupted.planProjectDeploy(input);
-    expect((await interrupted.executeProjectPlan(plan.id)).status).toBe("failed");
-    expect((await interrupted.listProjectDeployments())[0]?.status).toBe("deploying");
+    const operation = await interrupted.executeProjectPlan(plan.id);
+    expect(operation.status).toBe("failed");
+    expect(operation.error).toBe("synthetic interruption");
+    expect((await interrupted.getOperation(operation.id))?.error).toBe("synthetic interruption");
+    const active = (await interrupted.listProjectDeployments())[0];
+    expect(active?.status).toBe("active");
+    expect((await interrupted.planProjectRevoke(active?.id ?? "")).executable).toBe(true);
     const resumed = await createManagementStore(state, options);
     expect((await resumed.listProjectDeployments())[0]?.status).toBe("active");
     expect((await resumed.planProjectDeploy(input)).executable).toBe(false);
@@ -237,7 +242,8 @@ describe("managed Skill files", () => {
     await mkdir(projectPath);
     const options = { authorizedRoots: () => [sourceRoot, targetRoot] };
     const interrupted = await createManagementStoreWithRuntimeForTest(state, options, {
-      afterProjectDeployRename: () => {
+      afterProjectDeployRename: async () => {
+        await writeFile(join(targetRoot, "writer", "SKILL.md"), "external edit");
         throw new Error("synthetic interruption");
       },
     });
@@ -247,8 +253,10 @@ describe("managed Skill files", () => {
       targetRoot,
       targetClient: "codex",
     });
-    expect((await interrupted.executeProjectPlan(plan.id)).status).toBe("failed");
-    await writeFile(join(targetRoot, "writer", "SKILL.md"), "external edit");
+    const operation = await interrupted.executeProjectPlan(plan.id);
+    expect(operation.status).toBe("failed");
+    expect(operation.error).toBe("synthetic interruption");
+    expect((await interrupted.listProjectDeployments())[0]?.status).toBe("needs-review");
     const resumed = await createManagementStore(state, options);
     expect((await resumed.listProjectDeployments())[0]).toMatchObject({
       status: "needs-review",
@@ -284,13 +292,17 @@ describe("managed Skill files", () => {
     });
     const input = { source, projectPath, targetRoot, targetClient: "codex" as const };
     const plan = await interrupted.planProjectDeploy(input);
-    expect((await interrupted.executeProjectPlan(plan.id)).status).toBe("failed");
+    const operation = await interrupted.executeProjectPlan(plan.id);
+    expect(operation.status).toBe("failed");
+    expect(operation.error).toBe("synthetic interruption");
+    expect(await interrupted.listProjectDeployments()).toEqual([]);
+    expect((await interrupted.planProjectDeploy(input)).executable).toBe(true);
     const resumed = await createManagementStore(state, options);
     expect(await resumed.listProjectDeployments()).toEqual([]);
     expect((await resumed.planProjectDeploy(input)).executable).toBe(true);
   });
 
-  it("rolls back an unstarted revoke and completes a moved revoke after restart", async () => {
+  it("rolls back an unstarted revoke and completes a moved revoke in the current store", async () => {
     const workspace = await temporaryDirectory();
     const sourceRoot = join(workspace, "source");
     const source = join(sourceRoot, "writer");
@@ -315,8 +327,11 @@ describe("managed Skill files", () => {
       },
     });
     const first = await beforeMove.planProjectRevoke(id);
-    expect((await beforeMove.executeProjectPlan(first.id)).status).toBe("failed");
-    expect((await beforeMove.listProjectDeployments())[0]?.status).toBe("revoking");
+    const firstOperation = await beforeMove.executeProjectPlan(first.id);
+    expect(firstOperation.status).toBe("failed");
+    expect(firstOperation.error).toBe("synthetic interruption");
+    expect((await beforeMove.listProjectDeployments())[0]?.status).toBe("active");
+    expect((await beforeMove.planProjectRevoke(id)).executable).toBe(true);
     const rolledBack = await createManagementStore(state, options);
     expect((await rolledBack.listProjectDeployments())[0]?.status).toBe("active");
     const afterMove = await createManagementStoreWithRuntimeForTest(state, options, {
@@ -325,7 +340,10 @@ describe("managed Skill files", () => {
       },
     });
     const second = await afterMove.planProjectRevoke(id);
-    expect((await afterMove.executeProjectPlan(second.id)).status).toBe("failed");
+    const secondOperation = await afterMove.executeProjectPlan(second.id);
+    expect(secondOperation.status).toBe("failed");
+    expect(secondOperation.error).toBe("synthetic interruption");
+    expect((await afterMove.listProjectDeployments())[0]?.status).toBe("revoked");
     const resumed = await createManagementStore(state, options);
     const record = (await resumed.listProjectDeployments())[0];
     expect(record?.status).toBe("revoked");
@@ -353,14 +371,18 @@ describe("managed Skill files", () => {
     expect((await setup.executeProjectPlan(deploy.id)).status).toBe("succeeded");
     const id = (await setup.listProjectDeployments())[0]?.id ?? "";
     const interrupted = await createManagementStoreWithRuntimeForTest(state, options, {
-      afterProjectRevokeRename: () => {
+      afterProjectRevokeRename: async () => {
+        const recovery = (await interrupted.listProjectDeployments())[0]?.recoveryPath ?? "";
+        await writeFile(join(recovery, "SKILL.md"), "external edit");
         throw new Error("synthetic interruption");
       },
     });
     const revoke = await interrupted.planProjectRevoke(id);
-    expect((await interrupted.executeProjectPlan(revoke.id)).status).toBe("failed");
+    const operation = await interrupted.executeProjectPlan(revoke.id);
+    expect(operation.status).toBe("failed");
+    expect(operation.error).toBe("synthetic interruption");
     const recovery = (await interrupted.listProjectDeployments())[0]?.recoveryPath ?? "";
-    await writeFile(join(recovery, "SKILL.md"), "external edit");
+    expect((await interrupted.listProjectDeployments())[0]?.status).toBe("needs-review");
     const resumed = await createManagementStore(state, options);
     expect((await resumed.listProjectDeployments())[0]?.status).toBe("needs-review");
     expect(await readFile(join(recovery, "SKILL.md"), "utf8")).toBe("external edit");

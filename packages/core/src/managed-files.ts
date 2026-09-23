@@ -1773,6 +1773,7 @@ async function createManagementStoreInternal(
         };
         const item = operation.items[0] as OperationItemRecord;
         await persistOperation(operation);
+        let failed = false;
         try {
           checkAbort(executeOptions.signal);
           await assertProjectRealLocation(plan.projectPath, plan.targetRoot, plan.targetClient);
@@ -1929,6 +1930,7 @@ async function createManagementStoreInternal(
           item.status = "succeeded";
           operation.status = "succeeded";
         } catch (error) {
+          failed = true;
           item.status =
             error instanceof ManagementError && error.code === "aborted" ? "cancelled" : "failed";
           item.error = message(error);
@@ -1937,6 +1939,15 @@ async function createManagementStoreInternal(
         }
         operation.completedAt = new Date().toISOString();
         await persistOperation(operation);
+        if (failed) {
+          try {
+            await reconcileProjectDeployments();
+          } catch (error) {
+            operation.error = `${operation.error} Project state reconciliation failed: ${message(error)}`;
+            item.error = operation.error;
+            await persistOperation(operation);
+          }
+        }
         return operation;
       });
     },
