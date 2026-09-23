@@ -70,6 +70,7 @@ test("skill discussion previews selected evidence and sends only the edited draf
     ...(process.env.KOYORI_EXECUTABLE ? [] : [resolve("apps/desktop/out/main/index.js")]),
     `--user-data-dir=${userData}`,
     "--disable-auto-update-check",
+    "--koyori-acceptance-hidden",
   ];
   const launch = () => electron.launch({ executablePath, args, env });
   let app = await launch();

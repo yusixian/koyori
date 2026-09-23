@@ -47,7 +47,9 @@ export async function createWorkspaceController(deps: Dependencies) {
       ...known.map((root) => ({
         ...root,
         shared: discovered.roots.some((item) => item.path === root.path && item.kind === "shared"),
-        scope: discovered.targets.find((item) => item.path === root.path)?.scope,
+        scope:
+          discovered.roots.find((item) => item.path === root.path)?.scope ??
+          discovered.targets.find((item) => item.path === root.path)?.scope,
       })),
       ...discovered.targets
         .filter(

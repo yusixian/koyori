@@ -84,6 +84,7 @@ test("selected roots, preview, persistence and no source writes", async () => {
     ...(process.env.KOYORI_EXECUTABLE ? [] : [resolve("apps/desktop/out/main/index.js")]),
     `--user-data-dir=${userData}`,
     "--disable-auto-update-check",
+    "--koyori-acceptance-hidden",
   ];
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) {
@@ -244,6 +245,7 @@ test("automatic discovery, opt-in evidence, complete-folder sync and restore pre
     ...(process.env.KOYORI_EXECUTABLE ? [] : [resolve("apps/desktop/out/main/index.js")]),
     `--user-data-dir=${userData}`,
     "--disable-auto-update-check",
+    "--koyori-acceptance-hidden",
   ];
   let app = await electron.launch({ executablePath, args, env });
   try {

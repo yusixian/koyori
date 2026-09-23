@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -9,7 +9,7 @@ async function fixture() {
   const require = createRequire(resolve("apps/desktop/package.json"));
   const executablePath: unknown = process.env.KOYORI_EXECUTABLE ?? require("electron");
   if (typeof executablePath !== "string") throw new Error("Missing Electron executable");
-  const temporary = await mkdtemp(join(tmpdir(), "koyori-final-acceptance-"));
+  const temporary = await realpath(await mkdtemp(join(tmpdir(), "koyori-final-acceptance-")));
   const home = join(temporary, "home");
   const userData = join(temporary, "data");
   await mkdir(home, { recursive: true });
@@ -25,6 +25,7 @@ async function fixture() {
     ...(process.env.KOYORI_EXECUTABLE ? [] : [resolve("apps/desktop/out/main/index.js")]),
     `--user-data-dir=${userData}`,
     "--disable-auto-update-check",
+    "--koyori-acceptance-hidden",
   ];
   return {
     temporary,
@@ -48,6 +49,11 @@ test("register a project, preview and deploy a Skill, then revoke into recoverab
   const app = await isolated.launch();
   try {
     const page = await app.firstWindow();
+    expect(
+      await app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows().every((candidate) => !candidate.isVisible()),
+      ),
+    ).toBe(true);
     await page.getByRole("button", { name: "添加来源", exact: true }).click();
     await app.evaluate(({ dialog }, path) => {
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
@@ -83,7 +89,14 @@ test("register a project, preview and deploy a Skill, then revoke into recoverab
     await expect(readFile(join(target, "SKILL.md"))).rejects.toMatchObject({ code: "ENOENT" });
     await preview.getByRole("checkbox", { name: "我已检查目标、差异和兼容提示" }).check();
     await preview.getByRole("button", { name: "确认执行项目部署" }).click();
-    await expect.poll(() => readFile(join(target, "SKILL.md"), "utf8")).toBe(skill);
+    await expect
+      .poll(() =>
+        readFile(join(target, "SKILL.md"), "utf8").catch((error: unknown) => {
+          if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
+          throw error;
+        }),
+      )
+      .toBe(skill);
     expect(await readFile(join(target, "assets", "proof.txt"), "utf8")).toBe("synthetic asset\n");
     const deployment = await page.evaluate(async () =>
       (await window.koyori.getManagement()).projectDeployments.find(

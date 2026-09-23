@@ -113,7 +113,9 @@ function registerIpc() {
   });
 }
 function createWindow() {
+  const hiddenForAcceptance = app.commandLine.hasSwitch("koyori-acceptance-hidden");
   window = new BrowserWindow({
+    show: !hiddenForAcceptance,
     width: 1240,
     height: 820,
     minWidth: 920,
@@ -151,6 +153,9 @@ else {
   void app
     .whenReady()
     .then(async () => {
+      if (process.platform === "darwin" && app.commandLine.hasSwitch("koyori-acceptance-hidden")) {
+        app.dock?.hide();
+      }
       const dataDir = app.getPath("userData");
       try {
         const updatesEnabled =
