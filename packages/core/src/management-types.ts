@@ -202,13 +202,19 @@ export type ManagementPlan = SyncPlan | RestorePlan;
 
 export interface ProjectDeployment {
   id: string;
-  status: "active" | "revoked";
+  status: "deploying" | "active" | "revoking" | "revoked" | "needs-review";
   projectPath: string;
   targetRoot: string;
   targetClient: ClientId;
   sourcePath: string;
   targetPath: string;
-  installedRevision: DirectoryRevision & { kind: "directory" };
+  installedRevision?: DirectoryRevision & { kind: "directory" };
+  plannedManifestHash?: string;
+  plannedFiles?: number;
+  plannedBytes?: number;
+  movedIdentity?: { dev: number; ino: number };
+  stagePath?: string;
+  reviewReason?: string;
   createdAt: string;
   revokedAt?: string;
   recoveryPath?: string;

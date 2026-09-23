@@ -117,6 +117,10 @@ interface PlannedState {
 
 interface ManagementRuntime {
   beforeDisplaceRename?: (target: string, recoveryPath: string) => Promise<void> | void;
+  beforeProjectDeployRename?: () => Promise<void> | void;
+  afterProjectDeployRename?: () => Promise<void> | void;
+  beforeProjectRevokeRename?: () => Promise<void> | void;
+  afterProjectRevokeRename?: () => Promise<void> | void;
 }
 
 interface RecoveryUpdate {
@@ -656,9 +660,11 @@ async function writeScannedDirectory(
   destination: string,
   scanned: ScannedDirectory,
   signal?: AbortSignal,
+  onCreated?: () => void,
 ): Promise<void> {
   checkAbort(signal);
   await mkdir(destination, { recursive: false });
+  onCreated?.();
   const directories = scanned.manifest.entries.filter((entry) => entry.kind === "directory");
   directories.sort((left, right) => left.path.split("/").length - right.path.split("/").length);
   for (const entry of directories) {
@@ -1100,6 +1106,8 @@ async function createManagementStoreInternal(
     roots: AuthorizedRoot[],
     onRecoveryUpdate: (update: RecoveryUpdate) => Promise<void>,
     signal?: AbortSignal,
+    beforeCopyRename?: (stage: string) => Promise<void>,
+    reservedStagePath?: string,
   ): Promise<InstallResult> {
     if (action === "skip") return {};
     if (action !== "copy" && action !== "replace") {
@@ -1108,11 +1116,14 @@ async function createManagementStoreInternal(
     await ensureAuthorizedParent(target, roots);
     await revalidateTarget(target, expectedTarget, roots, signal);
     const parent = dirname(target);
-    const stage = await mkdtemp(join(parent, `.koyori-stage-${basename(target)}-`));
-    await rm(stage, { recursive: true });
+    const stage =
+      reservedStagePath ?? join(parent, `.koyori-stage-${basename(target)}-${randomUUID()}`);
+    let stageCreated = false;
     let backupId: string | undefined;
     try {
-      await writeScannedDirectory(stage, source, signal);
+      await writeScannedDirectory(stage, source, signal, () => {
+        stageCreated = true;
+      });
       checkAbort(signal);
       if (action === "replace") {
         const backup = await createBackupInternal([{ name: basename(target), path: target }], {
@@ -1240,6 +1251,7 @@ async function createManagementStoreInternal(
         };
       } else {
         await revalidateTarget(target, expectedTarget, roots, signal);
+        await beforeCopyRename?.(stage);
         await rename(stage, target);
       }
       const installed = await scanDirectory(target, roots, limits, {
@@ -1252,7 +1264,7 @@ async function createManagementStoreInternal(
       }
       return { backupSnapshotId: backupId };
     } finally {
-      await rm(stage, { recursive: true, force: true });
+      if (stageCreated) await rm(stage, { recursive: true, force: true });
     }
   }
 
@@ -1402,6 +1414,32 @@ async function createManagementStoreInternal(
     }
   }
 
+  async function assertProjectRealLocation(
+    projectPath: string,
+    targetRoot: string,
+    client: ProjectDeployment["targetClient"],
+  ): Promise<void> {
+    assertProjectLocation(projectPath, targetRoot, client);
+    const projectRealPath = await realpath(projectPath);
+    if (!(await stat(projectRealPath)).isDirectory()) {
+      throw new ManagementError("invalid-input", "Registered project is not a directory.");
+    }
+    const anchor = await nearestExisting(targetRoot);
+    if (!isWithin(anchor.logicalPath, projectPath)) {
+      throw new ManagementError(
+        "outside-authorized-roots",
+        "Project Skills root left the project.",
+      );
+    }
+    const targetRealPath = resolve(anchor.realPath, relative(anchor.logicalPath, targetRoot));
+    if (!isWithin(targetRealPath, projectRealPath)) {
+      throw new ManagementError(
+        "outside-authorized-roots",
+        "Project Skills directory resolves outside the registered project.",
+      );
+    }
+  }
+
   function assertProjectDeployment(
     value: unknown,
     path: string,
@@ -1410,7 +1448,9 @@ async function createManagementStoreInternal(
       !isRecord(value) ||
       typeof value.id !== "string" ||
       !/^[0-9a-f-]{36}$/i.test(value.id) ||
-      (value.status !== "active" && value.status !== "revoked") ||
+      !["deploying", "active", "revoking", "revoked", "needs-review"].includes(
+        String(value.status),
+      ) ||
       typeof value.projectPath !== "string" ||
       !isAbsolute(value.projectPath) ||
       typeof value.targetRoot !== "string" ||
@@ -1420,21 +1460,48 @@ async function createManagementStoreInternal(
       !isAbsolute(value.sourcePath) ||
       typeof value.targetPath !== "string" ||
       !isAbsolute(value.targetPath) ||
-      !isRecord(value.installedRevision) ||
-      value.installedRevision.kind !== "directory" ||
-      typeof value.installedRevision.realPath !== "string" ||
-      !isAbsolute(value.installedRevision.realPath) ||
-      typeof value.installedRevision.manifestHash !== "string" ||
-      !/^[0-9a-f]{64}$/.test(value.installedRevision.manifestHash) ||
-      typeof value.installedRevision.files !== "number" ||
-      typeof value.installedRevision.bytes !== "number" ||
       typeof value.createdAt !== "string"
     )
       throw new ManagementError("corrupt-data", `Invalid project deployment: ${path}`);
     assertProjectLocation(value.projectPath, value.targetRoot, value.targetClient);
     if (
       dirname(value.targetPath) !== value.targetRoot ||
-      !isSafeDirectoryName(basename(value.targetPath))
+      !isSafeDirectoryName(basename(value.targetPath)) ||
+      (value.installedRevision !== undefined &&
+        (!isRecord(value.installedRevision) ||
+          value.installedRevision.kind !== "directory" ||
+          typeof value.installedRevision.realPath !== "string" ||
+          !isAbsolute(value.installedRevision.realPath) ||
+          typeof value.installedRevision.manifestHash !== "string" ||
+          !/^[0-9a-f]{64}$/.test(value.installedRevision.manifestHash) ||
+          typeof value.installedRevision.files !== "number" ||
+          typeof value.installedRevision.bytes !== "number")) ||
+      (value.status !== "deploying" &&
+        value.installedRevision === undefined &&
+        value.status !== "needs-review") ||
+      (value.status === "deploying" &&
+        (typeof value.plannedManifestHash !== "string" ||
+          !/^[0-9a-f]{64}$/.test(value.plannedManifestHash) ||
+          typeof value.plannedFiles !== "number" ||
+          typeof value.plannedBytes !== "number")) ||
+      (value.recoveryPath !== undefined &&
+        (typeof value.recoveryPath !== "string" ||
+          !(
+            (dirname(value.recoveryPath) === value.targetRoot &&
+              basename(value.recoveryPath).startsWith(".koyori-recovery-")) ||
+            (value.status === "revoked" &&
+              dirname(value.recoveryPath) === recoveriesDirectory &&
+              basename(value.recoveryPath).startsWith("project-"))
+          ))) ||
+      (value.stagePath !== undefined &&
+        (typeof value.stagePath !== "string" ||
+          dirname(value.stagePath) !== value.targetRoot ||
+          !basename(value.stagePath).startsWith(".koyori-stage-"))) ||
+      (value.movedIdentity !== undefined &&
+        (!isRecord(value.movedIdentity) ||
+          typeof value.movedIdentity.dev !== "number" ||
+          typeof value.movedIdentity.ino !== "number")) ||
+      (value.reviewReason !== undefined && typeof value.reviewReason !== "string")
     ) {
       throw new ManagementError("corrupt-data", `Invalid project deployment target: ${path}`);
     }
@@ -1472,6 +1539,116 @@ async function createManagementStoreInternal(
     return records.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   }
 
+  async function reconcileProjectDeployments(): Promise<void> {
+    for (const record of await listProjectDeployments()) {
+      if (record.status !== "deploying" && record.status !== "revoking") continue;
+      try {
+        await assertProjectRealLocation(record.projectPath, record.targetRoot, record.targetClient);
+        const roots = await resolveAuthorizedRoots(options);
+        const targetStat = await lstatOptional(record.targetPath);
+        const stageStat = record.stagePath ? await lstatOptional(record.stagePath) : undefined;
+        const recoveryStat = record.recoveryPath
+          ? await lstatOptional(record.recoveryPath)
+          : undefined;
+        const sameMoved = (value: Awaited<ReturnType<typeof lstatOptional>>) =>
+          Boolean(
+            value &&
+              record.movedIdentity &&
+              value.dev === record.movedIdentity.dev &&
+              value.ino === record.movedIdentity.ino,
+          );
+        if (record.status === "deploying") {
+          if (!targetStat) {
+            if (stageStat) {
+              if (!sameMoved(stageStat) || !record.stagePath) {
+                throw new ManagementError(
+                  "conflict",
+                  "Staged project Skill changed during interruption.",
+                );
+              }
+              const stage = await scanDirectory(record.stagePath, roots, limits, {
+                requireSkill: true,
+                includeContent: false,
+              });
+              if (stage.manifest.hash !== record.plannedManifestHash) {
+                throw new ManagementError("conflict", "Staged project Skill content changed.");
+              }
+              await rm(record.stagePath, { recursive: true });
+            }
+            await rm(join(deploymentsDirectory, `${record.id}.json`));
+            continue;
+          }
+          if (stageStat || !sameMoved(targetStat)) {
+            throw new ManagementError(
+              "conflict",
+              "Project target identity differs from staged copy.",
+            );
+          }
+          const target = await scanDirectory(record.targetPath, roots, limits, {
+            requireSkill: true,
+            includeContent: false,
+          });
+          if (
+            target.manifest.hash !== record.plannedManifestHash ||
+            target.manifest.files !== record.plannedFiles ||
+            target.manifest.bytes !== record.plannedBytes
+          ) {
+            throw new ManagementError("conflict", "Installed project Skill content changed.");
+          }
+          await persistProjectDeployment({
+            ...record,
+            status: "active",
+            installedRevision: target.revision,
+            stagePath: undefined,
+            movedIdentity: undefined,
+          });
+        } else {
+          if (!record.installedRevision || !record.recoveryPath || !record.movedIdentity) {
+            throw new ManagementError("corrupt-data", "Project revoke transition is incomplete.");
+          }
+          if (targetStat && !recoveryStat && sameMoved(targetStat)) {
+            const target = await inspectPath(record.targetPath, roots, limits);
+            if (!revisionsEqual(target.revision, record.installedRevision)) {
+              throw new ManagementError(
+                "conflict",
+                "Project target changed before revoke resumed.",
+              );
+            }
+            await persistProjectDeployment({
+              ...record,
+              status: "active",
+              recoveryPath: undefined,
+              movedIdentity: undefined,
+            });
+            continue;
+          }
+          if (targetStat || !sameMoved(recoveryStat)) {
+            throw new ManagementError("conflict", "Project target or recovery identity changed.");
+          }
+          const recovery = await scanDirectory(record.recoveryPath, roots, limits, {
+            requireSkill: true,
+            includeContent: false,
+          });
+          if (recovery.manifest.hash !== record.installedRevision.manifestHash) {
+            throw new ManagementError("conflict", "Project recovery content changed.");
+          }
+          await persistProjectDeployment({
+            ...record,
+            status: "revoked",
+            revokedAt: new Date().toISOString(),
+            movedIdentity: undefined,
+          });
+        }
+      } catch (error) {
+        await persistProjectDeployment({
+          ...record,
+          status: "needs-review",
+          reviewReason: message(error),
+        });
+      }
+    }
+  }
+
   function rememberProjectPlan(plan: ProjectDeploymentPlan): ProjectDeploymentPlan {
     for (const [id, pending] of projectPlans)
       if (Date.parse(pending.expiresAt) <= Date.now()) projectPlans.delete(id);
@@ -1490,7 +1667,7 @@ async function createManagementStoreInternal(
       const projectPath = requireAbsolutePath(input.projectPath, "Project");
       const targetRoot = requireAbsolutePath(input.targetRoot, "Project Skills root");
       const sourcePath = requireAbsolutePath(input.source, "Source");
-      assertProjectLocation(projectPath, targetRoot, input.targetClient);
+      await assertProjectRealLocation(projectPath, targetRoot, input.targetClient);
       const targetPath = join(targetRoot, basename(sourcePath));
       if (!isSafeDirectoryName(basename(sourcePath)))
         throw new ManagementError("invalid-input", "Invalid Skill directory name.");
@@ -1502,7 +1679,7 @@ async function createManagementStoreInternal(
       });
       const inspected = await inspectPath(targetPath, roots, limits, { signal: input.signal });
       const existing = (await listProjectDeployments()).find(
-        (item) => item.status === "active" && item.targetPath === targetPath,
+        (item) => item.status !== "revoked" && item.targetPath === targetPath,
       );
       const conflict = existing
         ? "This target is already managed by Koyori."
@@ -1542,12 +1719,13 @@ async function createManagementStoreInternal(
     async planProjectRevoke(deploymentId, signal) {
       checkAbort(signal);
       const record = await readProjectDeployment(deploymentId);
+      await assertProjectRealLocation(record.projectPath, record.targetRoot, record.targetClient);
       const roots = await resolveAuthorizedRoots(options);
       const current = await inspectPath(record.targetPath, roots, limits, { signal });
       const conflict =
         record.status !== "active"
-          ? "This deployment was already revoked."
-          : !revisionsEqual(current.revision, record.installedRevision)
+          ? "This deployment is not active; inspect its recorded state."
+          : !record.installedRevision || !revisionsEqual(current.revision, record.installedRevision)
             ? "Project Skill changed outside Koyori; inspect it before revoking."
             : undefined;
       const plan: ProjectDeploymentPlan = {
@@ -1561,8 +1739,8 @@ async function createManagementStoreInternal(
         targetPath: record.targetPath,
         deploymentId: record.id,
         targetRevision: current.revision,
-        files: record.installedRevision.files,
-        bytes: record.installedRevision.bytes,
+        files: record.installedRevision?.files ?? 0,
+        bytes: record.installedRevision?.bytes ?? 0,
         ...(conflict ? { conflict } : {}),
         compatibilityWarnings: [],
       };
@@ -1597,12 +1775,13 @@ async function createManagementStoreInternal(
         await persistOperation(operation);
         try {
           checkAbort(executeOptions.signal);
+          await assertProjectRealLocation(plan.projectPath, plan.targetRoot, plan.targetClient);
           const roots = await resolveAuthorizedRoots(options);
           if (plan.kind === "project-deploy") {
             if (!plan.sourcePath || !plan.sourceRevision)
               throw new ManagementError("corrupt-data", "Project deployment plan lacks a source.");
             const existing = (await listProjectDeployments()).find(
-              (entry) => entry.status === "active" && entry.targetPath === plan.targetPath,
+              (entry) => entry.status !== "revoked" && entry.targetPath === plan.targetPath,
             );
             if (existing)
               throw new ManagementError("conflict", "Project target is already managed by Koyori.");
@@ -1618,6 +1797,24 @@ async function createManagementStoreInternal(
               );
             // Finish ownership registration once installation starts, even if cancellation arrives.
             checkAbort(executeOptions.signal);
+            const pending: ProjectDeployment = {
+              id: randomUUID(),
+              status: "deploying",
+              projectPath: plan.projectPath,
+              targetRoot: plan.targetRoot,
+              targetClient: plan.targetClient,
+              sourcePath: plan.sourcePath,
+              targetPath: plan.targetPath,
+              stagePath: join(
+                plan.targetRoot,
+                `.koyori-stage-${basename(plan.targetPath)}-${randomUUID()}`,
+              ),
+              plannedManifestHash: materializeManifest(source.manifest).hash,
+              plannedFiles: source.manifest.files,
+              plannedBytes: source.manifest.bytes,
+              createdAt: new Date().toISOString(),
+            };
+            await persistProjectDeployment(pending);
             await installDirectory(
               source,
               plan.targetPath,
@@ -1625,7 +1822,24 @@ async function createManagementStoreInternal(
               plan.targetRevision,
               roots,
               async () => {},
+              undefined,
+              async (stage) => {
+                await assertProjectRealLocation(
+                  plan.projectPath,
+                  plan.targetRoot,
+                  plan.targetClient,
+                );
+                const information = await lstat(stage);
+                await persistProjectDeployment({
+                  ...pending,
+                  stagePath: stage,
+                  movedIdentity: { dev: information.dev, ino: information.ino },
+                });
+                await runtime.beforeProjectDeployRename?.();
+              },
+              pending.stagePath,
             );
+            await runtime.afterProjectDeployRename?.();
             const installed = await inspectPath(plan.targetPath, roots, limits);
             if (installed.revision.kind !== "directory")
               throw new ManagementError("conflict", "Installed project Skill is missing.");
@@ -1635,15 +1849,11 @@ async function createManagementStoreInternal(
                 "Installed project Skill changed before its ownership record could be saved.",
               );
             await persistProjectDeployment({
-              id: randomUUID(),
+              ...pending,
               status: "active",
-              projectPath: plan.projectPath,
-              targetRoot: plan.targetRoot,
-              targetClient: plan.targetClient,
-              sourcePath: plan.sourcePath,
-              targetPath: plan.targetPath,
               installedRevision: installed.revision,
-              createdAt: new Date().toISOString(),
+              stagePath: undefined,
+              movedIdentity: undefined,
             });
           } else {
             if (!plan.deploymentId)
@@ -1662,6 +1872,11 @@ async function createManagementStoreInternal(
                 "conflict",
                 "Project deployment record changed after planning.",
               );
+            if (!record.installedRevision)
+              throw new ManagementError(
+                "corrupt-data",
+                "Project deployment lacks an installed revision.",
+              );
             const current = await revalidateTarget(
               plan.targetPath,
               record.installedRevision,
@@ -1670,21 +1885,34 @@ async function createManagementStoreInternal(
             );
             if (current.revision.kind !== "directory")
               throw new ManagementError("conflict", "Project Skill is no longer a directory.");
-            const recoveryPath = join(recoveriesDirectory, `project-${record.id}-${randomUUID()}`);
+            const recoveryPath = join(
+              record.targetRoot,
+              `.koyori-recovery-${basename(record.targetPath)}-${randomUUID()}`,
+            );
+            if (await lstatOptional(recoveryPath))
+              throw new ManagementError("conflict", "Project recovery destination already exists.");
+            const targetStat = await lstat(plan.targetPath);
             item.recoveryPath = recoveryPath;
             item.recoveryState = "reserved";
             await persistOperation(operation);
+            await persistProjectDeployment({
+              ...record,
+              status: "revoking",
+              recoveryPath,
+              movedIdentity: { dev: targetStat.dev, ino: targetStat.ino },
+            });
             // Once moved, complete the recovery record instead of cancelling between writes.
             checkAbort(executeOptions.signal);
+            await assertProjectRealLocation(plan.projectPath, plan.targetRoot, plan.targetClient);
+            await runtime.beforeProjectRevokeRename?.();
             await rename(plan.targetPath, recoveryPath);
+            await runtime.afterProjectRevokeRename?.();
             item.recoveryState = "preserved";
             await persistOperation(operation);
-            const preserved = await scanDirectory(
-              recoveryPath,
-              roots.concat([await backupAuthorizedRoot(recoveryPath)]),
-              limits,
-              { requireSkill: true, includeContent: false },
-            );
+            const preserved = await scanDirectory(recoveryPath, roots, limits, {
+              requireSkill: true,
+              includeContent: false,
+            });
             if (preserved.manifest.hash !== record.installedRevision.manifestHash)
               throw new ManagementError(
                 "conflict",
@@ -1695,6 +1923,7 @@ async function createManagementStoreInternal(
               status: "revoked",
               revokedAt: new Date().toISOString(),
               recoveryPath,
+              movedIdentity: undefined,
             });
           }
           item.status = "succeeded";
@@ -2149,7 +2378,10 @@ async function createManagementStoreInternal(
     },
   };
 
-  await withMutation(recoverInterruptedOperations);
+  await withMutation(async () => {
+    await recoverInterruptedOperations();
+    await reconcileProjectDeployments();
+  });
   return store;
 }
 

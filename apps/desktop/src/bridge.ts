@@ -94,13 +94,15 @@ export interface ManagementView {
   lastResult: string | null;
   projectDeployments: {
     id: string;
-    status: "active" | "revoked";
+    status: "deploying" | "active" | "revoking" | "revoked" | "needs-review";
     projectPath: string;
     targetRoot: string;
     targetPath: string;
     sourcePath: string;
     createdAt: string;
     recoveryPath?: string;
+    stagePath?: string;
+    reviewReason?: string;
   }[];
 }
 

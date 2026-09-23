@@ -340,16 +340,34 @@ export function ManagementPanel({
         )}
         <hr />
         <h2>受管项目副本</h2>
-        {(view?.projectDeployments ?? [])
-          .filter((entry) => entry.status === "active")
-          .map((entry) => (
-            <article className="backup-row" key={entry.id}>
-              <div>
-                <strong>{entry.targetPath.split("/").at(-1)}</strong>
-                <code>项目：{entry.projectPath}</code>
-                <code>来源：{entry.sourcePath}</code>
-                <code>目标：{entry.targetPath}</code>
-              </div>
+        <p className="management-hint">
+          撤销后的恢复目录保留在项目 Skills 目录内。需要人工核对的记录会显示目标和恢复位置。
+        </p>
+        {(view?.projectDeployments ?? []).map((entry) => (
+          <article className="backup-row" key={entry.id}>
+            <div>
+              <strong>
+                {entry.targetPath.split("/").at(-1)} ·{" "}
+                {
+                  {
+                    deploying: "部署待核对",
+                    active: "使用中",
+                    revoking: "撤销待核对",
+                    revoked: "已撤销",
+                    "needs-review": "需要人工核对",
+                  }[entry.status]
+                }
+              </strong>
+              <code>项目：{entry.projectPath}</code>
+              <code>来源：{entry.sourcePath}</code>
+              <code>目标：{entry.targetPath}</code>
+              {entry.stagePath && entry.status === "needs-review" && (
+                <code>暂存目录：{entry.stagePath}</code>
+              )}
+              {entry.recoveryPath && <code>恢复目录：{entry.recoveryPath}</code>}
+              {entry.reviewReason && <p role="alert">{entry.reviewReason}</p>}
+            </div>
+            {entry.status === "active" && (
               <button
                 type="button"
                 className="button"
@@ -363,10 +381,12 @@ export function ManagementPanel({
               >
                 预览撤销
               </button>
-            </article>
-          ))}
-        {(view?.projectDeployments ?? []).filter((entry) => entry.status === "active").length ===
-          0 && <p className="muted">还没有 Koyori 登记的项目部署。</p>}
+            )}
+          </article>
+        ))}
+        {view?.projectDeployments.length === 0 && (
+          <p className="muted">还没有 Koyori 登记的项目部署。</p>
+        )}
       </section>
       {plan && (
         <section className="management-card plan-preview" aria-label="操作计划">

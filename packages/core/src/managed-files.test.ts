@@ -10,7 +10,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -78,8 +78,292 @@ describe("managed Skill files", () => {
     expect(await readFile(join(operation.items[0]?.recoveryPath ?? "", "asset.txt"), "utf8")).toBe(
       "resource",
     );
+    expect(dirname(operation.items[0]?.recoveryPath ?? "")).toBe(targetRoot);
+    expect(operation.items[0]?.recoveryPath).toContain(".koyori-recovery-");
     expect((await store.listProjectDeployments())[0]).toMatchObject({ status: "revoked" });
     expect(await readFile(join(source, "asset.txt"), "utf8")).toBe("resource");
+  });
+
+  it("keeps pre-existing revoked records with app-data recovery paths readable", async () => {
+    const workspace = await temporaryDirectory();
+    const sourceRoot = join(workspace, "source");
+    const source = join(sourceRoot, "writer");
+    const projectPath = join(workspace, "project");
+    const targetRoot = join(projectPath, ".agents", "skills");
+    const state = join(workspace, "state");
+    await writeSkill(source, "writer");
+    await mkdir(projectPath);
+    const options = { authorizedRoots: () => [sourceRoot, targetRoot] };
+    const store = await createManagementStore(state, options);
+    const deploy = await store.planProjectDeploy({
+      source,
+      projectPath,
+      targetRoot,
+      targetClient: "codex",
+    });
+    expect((await store.executeProjectPlan(deploy.id)).status).toBe("succeeded");
+    const id = (await store.listProjectDeployments())[0]?.id ?? "";
+    const revoke = await store.planProjectRevoke(id);
+    expect((await store.executeProjectPlan(revoke.id)).status).toBe("succeeded");
+    const path = join(state, "managed-files", "project-deployments", `${id}.json`);
+    const value: unknown = JSON.parse(await readFile(path, "utf8"));
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new Error("Invalid synthetic deployment record.");
+    }
+    const legacy = {
+      ...value,
+      recoveryPath: join(state, "managed-files", "recoveries", `project-${id}-legacy`),
+    };
+    await writeFile(path, JSON.stringify(legacy));
+    const resumed = await createManagementStore(state, options);
+    expect((await resumed.listProjectDeployments())[0]).toMatchObject({
+      status: "revoked",
+      recoveryPath: legacy.recoveryPath,
+    });
+  });
+
+  it("rejects project-internal links escaping the registered project at plan and execution", async () => {
+    const workspace = await temporaryDirectory();
+    const sourceRoot = join(workspace, "source");
+    const source = join(sourceRoot, "writer");
+    const projectPath = join(workspace, "project");
+    const targetRoot = join(projectPath, ".agents", "skills");
+    const external = join(workspace, "external");
+    await writeSkill(source, "writer");
+    await mkdir(projectPath);
+    await mkdir(external);
+    const store = await createManagementStore(join(workspace, "state"), {
+      authorizedRoots: () => [sourceRoot, targetRoot],
+    });
+    const input = { source, projectPath, targetRoot, targetClient: "codex" as const };
+    await symlink(external, join(projectPath, ".agents"));
+    await expect(store.planProjectDeploy(input)).rejects.toMatchObject({
+      code: "outside-authorized-roots",
+    });
+    await rm(join(projectPath, ".agents"));
+    const plan = await store.planProjectDeploy(input);
+    await symlink(external, join(projectPath, ".agents"));
+    expect((await store.executeProjectPlan(plan.id)).status).toBe("failed");
+    await expect(stat(join(external, "skills", "writer"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
+  it("accepts a linked project whose Skills target stays within the real project", async () => {
+    const workspace = await temporaryDirectory();
+    const sourceRoot = join(workspace, "source");
+    const source = join(sourceRoot, "writer");
+    const realProject = join(workspace, "real-project");
+    const projectPath = join(workspace, "project-alias");
+    const targetRoot = join(projectPath, ".agents", "skills");
+    await writeSkill(source, "writer");
+    await mkdir(realProject);
+    await symlink(realProject, projectPath);
+    const store = await createManagementStore(join(workspace, "state"), {
+      authorizedRoots: () => [sourceRoot, targetRoot],
+    });
+    const plan = await store.planProjectDeploy({
+      source,
+      projectPath,
+      targetRoot,
+      targetClient: "codex",
+    });
+    expect((await store.executeProjectPlan(plan.id)).status).toBe("succeeded");
+    expect(
+      await readFile(join(realProject, ".agents", "skills", "writer", "SKILL.md"), "utf8"),
+    ).toContain("name: writer");
+  });
+
+  it("rejects revocation if a project Skills ancestor is redirected outside the project", async () => {
+    const workspace = await temporaryDirectory();
+    const sourceRoot = join(workspace, "source");
+    const source = join(sourceRoot, "writer");
+    const projectPath = join(workspace, "project");
+    const targetRoot = join(projectPath, ".agents", "skills");
+    const external = join(workspace, "external");
+    await writeSkill(source, "writer");
+    await mkdir(projectPath);
+    await mkdir(external);
+    const store = await createManagementStore(join(workspace, "state"), {
+      authorizedRoots: () => [sourceRoot, targetRoot],
+    });
+    const deploy = await store.planProjectDeploy({
+      source,
+      projectPath,
+      targetRoot,
+      targetClient: "codex",
+    });
+    expect((await store.executeProjectPlan(deploy.id)).status).toBe("succeeded");
+    const id = (await store.listProjectDeployments())[0]?.id ?? "";
+    await rm(join(projectPath, ".agents"), { recursive: true });
+    await symlink(external, join(projectPath, ".agents"));
+    await expect(store.planProjectRevoke(id)).rejects.toMatchObject({
+      code: "outside-authorized-roots",
+    });
+  });
+
+  it("completes an interrupted deployment only for the staged directory identity", async () => {
+    const workspace = await temporaryDirectory();
+    const sourceRoot = join(workspace, "source");
+    const source = join(sourceRoot, "writer");
+    const projectPath = join(workspace, "project");
+    const targetRoot = join(projectPath, ".agents", "skills");
+    const state = join(workspace, "state");
+    await writeSkill(source, "writer");
+    await mkdir(projectPath);
+    const options = { authorizedRoots: () => [sourceRoot, targetRoot] };
+    const interrupted = await createManagementStoreWithRuntimeForTest(state, options, {
+      afterProjectDeployRename: () => {
+        throw new Error("synthetic interruption");
+      },
+    });
+    const input = { source, projectPath, targetRoot, targetClient: "codex" as const };
+    const plan = await interrupted.planProjectDeploy(input);
+    expect((await interrupted.executeProjectPlan(plan.id)).status).toBe("failed");
+    expect((await interrupted.listProjectDeployments())[0]?.status).toBe("deploying");
+    const resumed = await createManagementStore(state, options);
+    expect((await resumed.listProjectDeployments())[0]?.status).toBe("active");
+    expect((await resumed.planProjectDeploy(input)).executable).toBe(false);
+  });
+
+  it("flags an interrupted deployment when its copied content changed", async () => {
+    const workspace = await temporaryDirectory();
+    const sourceRoot = join(workspace, "source");
+    const source = join(sourceRoot, "writer");
+    const projectPath = join(workspace, "project");
+    const targetRoot = join(projectPath, ".agents", "skills");
+    const state = join(workspace, "state");
+    await writeSkill(source, "writer");
+    await mkdir(projectPath);
+    const options = { authorizedRoots: () => [sourceRoot, targetRoot] };
+    const interrupted = await createManagementStoreWithRuntimeForTest(state, options, {
+      afterProjectDeployRename: () => {
+        throw new Error("synthetic interruption");
+      },
+    });
+    const plan = await interrupted.planProjectDeploy({
+      source,
+      projectPath,
+      targetRoot,
+      targetClient: "codex",
+    });
+    expect((await interrupted.executeProjectPlan(plan.id)).status).toBe("failed");
+    await writeFile(join(targetRoot, "writer", "SKILL.md"), "external edit");
+    const resumed = await createManagementStore(state, options);
+    expect((await resumed.listProjectDeployments())[0]).toMatchObject({
+      status: "needs-review",
+      reviewReason: expect.any(String),
+    });
+    expect(
+      (
+        await resumed.planProjectDeploy({
+          source,
+          projectPath,
+          targetRoot,
+          targetClient: "codex",
+        })
+      ).executable,
+    ).toBe(false);
+    expect(await readFile(join(targetRoot, "writer", "SKILL.md"), "utf8")).toBe("external edit");
+  });
+
+  it("rolls back a deployment interrupted before the target rename", async () => {
+    const workspace = await temporaryDirectory();
+    const sourceRoot = join(workspace, "source");
+    const source = join(sourceRoot, "writer");
+    const projectPath = join(workspace, "project");
+    const targetRoot = join(projectPath, ".agents", "skills");
+    const state = join(workspace, "state");
+    await writeSkill(source, "writer");
+    await mkdir(projectPath);
+    const options = { authorizedRoots: () => [sourceRoot, targetRoot] };
+    const interrupted = await createManagementStoreWithRuntimeForTest(state, options, {
+      beforeProjectDeployRename: () => {
+        throw new Error("synthetic interruption");
+      },
+    });
+    const input = { source, projectPath, targetRoot, targetClient: "codex" as const };
+    const plan = await interrupted.planProjectDeploy(input);
+    expect((await interrupted.executeProjectPlan(plan.id)).status).toBe("failed");
+    const resumed = await createManagementStore(state, options);
+    expect(await resumed.listProjectDeployments()).toEqual([]);
+    expect((await resumed.planProjectDeploy(input)).executable).toBe(true);
+  });
+
+  it("rolls back an unstarted revoke and completes a moved revoke after restart", async () => {
+    const workspace = await temporaryDirectory();
+    const sourceRoot = join(workspace, "source");
+    const source = join(sourceRoot, "writer");
+    const projectPath = join(workspace, "project");
+    const targetRoot = join(projectPath, ".agents", "skills");
+    const state = join(workspace, "state");
+    await writeSkill(source, "writer");
+    await mkdir(projectPath);
+    const options = { authorizedRoots: () => [sourceRoot, targetRoot] };
+    const setup = await createManagementStore(state, options);
+    const deployment = await setup.planProjectDeploy({
+      source,
+      projectPath,
+      targetRoot,
+      targetClient: "codex",
+    });
+    expect((await setup.executeProjectPlan(deployment.id)).status).toBe("succeeded");
+    const id = (await setup.listProjectDeployments())[0]?.id ?? "";
+    const beforeMove = await createManagementStoreWithRuntimeForTest(state, options, {
+      beforeProjectRevokeRename: () => {
+        throw new Error("synthetic interruption");
+      },
+    });
+    const first = await beforeMove.planProjectRevoke(id);
+    expect((await beforeMove.executeProjectPlan(first.id)).status).toBe("failed");
+    expect((await beforeMove.listProjectDeployments())[0]?.status).toBe("revoking");
+    const rolledBack = await createManagementStore(state, options);
+    expect((await rolledBack.listProjectDeployments())[0]?.status).toBe("active");
+    const afterMove = await createManagementStoreWithRuntimeForTest(state, options, {
+      afterProjectRevokeRename: () => {
+        throw new Error("synthetic interruption");
+      },
+    });
+    const second = await afterMove.planProjectRevoke(id);
+    expect((await afterMove.executeProjectPlan(second.id)).status).toBe("failed");
+    const resumed = await createManagementStore(state, options);
+    const record = (await resumed.listProjectDeployments())[0];
+    expect(record?.status).toBe("revoked");
+    expect(record?.recoveryPath).toContain(join(targetRoot, ".koyori-recovery-"));
+    await expect(stat(join(targetRoot, "writer"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("keeps an externally edited moved recovery for manual review", async () => {
+    const workspace = await temporaryDirectory();
+    const sourceRoot = join(workspace, "source");
+    const source = join(sourceRoot, "writer");
+    const projectPath = join(workspace, "project");
+    const targetRoot = join(projectPath, ".agents", "skills");
+    const state = join(workspace, "state");
+    await writeSkill(source, "writer");
+    await mkdir(projectPath);
+    const options = { authorizedRoots: () => [sourceRoot, targetRoot] };
+    const setup = await createManagementStore(state, options);
+    const deploy = await setup.planProjectDeploy({
+      source,
+      projectPath,
+      targetRoot,
+      targetClient: "codex",
+    });
+    expect((await setup.executeProjectPlan(deploy.id)).status).toBe("succeeded");
+    const id = (await setup.listProjectDeployments())[0]?.id ?? "";
+    const interrupted = await createManagementStoreWithRuntimeForTest(state, options, {
+      afterProjectRevokeRename: () => {
+        throw new Error("synthetic interruption");
+      },
+    });
+    const revoke = await interrupted.planProjectRevoke(id);
+    expect((await interrupted.executeProjectPlan(revoke.id)).status).toBe("failed");
+    const recovery = (await interrupted.listProjectDeployments())[0]?.recoveryPath ?? "";
+    await writeFile(join(recovery, "SKILL.md"), "external edit");
+    const resumed = await createManagementStore(state, options);
+    expect((await resumed.listProjectDeployments())[0]?.status).toBe("needs-review");
+    expect(await readFile(join(recovery, "SKILL.md"), "utf8")).toBe("external edit");
   });
 
   it("refuses project takeover and preserves externally edited deployments", async () => {
