@@ -1,6 +1,6 @@
 # macOS Preview 签名与发布
 
-Preview 面向 macOS 13 及以上的 Apple Silicon Mac。根 `package.json` 是版本来源；v0.1.0-alpha.1 已以 Apple Development 签名、未公证的手动安装包公开发布。后续候选的签名、更新与发布状态以对应验收记录为准。
+Preview 面向 macOS 13 及以上的 Apple Silicon Mac。根 `package.json` 是版本来源；当前公开版本以 GitHub Release 和站点下载清单为准。各版签名、更新与发布状态以对应验收记录为准。
 
 ## Apple 凭据
 
@@ -36,6 +36,8 @@ Preview 面向 macOS 13 及以上的 Apple Silicon Mac。根 `package.json` 是�
 Developer ID 公证候选和 Apple Development 更新候选都生成 DMG、ZIP、blockmap 和 `alpha-mac.yml`，应用内含 `app-update.yml`。DMG 容器本身不额外签名。`artifacts/candidate.json` 记录源码 commit、版本、架构、签名状态和每份发行文件的摘要，不能仅凭生成了这个 JSON 就跳过安装验收。
 
 ## 发布与更新
+
+维护者可在项目 Codex 会话中调用 [`$oneshot`](../.agents/skills/oneshot/SKILL.md) 推进完整 Preview：准备版本正文与公开指南，等 main CI 通过后连续触发受保护发布工作流，再推广下载清单并部署文档站。中断后用“`$oneshot 继续 v<VERSION>`”按远端状态恢复。日常验收由 CI 和发布工作流完成；它不是新的打包或发布脚本。
 
 发布流水线只接受 `main` 上 CI 成功的不可变提交，且版本必须高于已公开版本。选择分发模式后构建并验收同一份应用，再上传 draft Release 并回读校验资产。校验通过才公开 Release，最后生成供网站推广的发布清单。同版本 tag 或安装包不覆盖。未签名手动模式没有应用内更新元数据。
 
