@@ -5,7 +5,7 @@ description: Koyori Preview 的 macOS 安装、应用内更新和签名状态。
 
 ## 当前状态
 
-v0.1.0-alpha.1 已公开发布，使用 Apple Development 签名、未公证，只能手动安装和更新。后续 Preview 的实际安装方式以[下载页](/download)所列版本为准。
+当前公开版为 v0.1.0-alpha.4，使用 Apple Development 签名、未公证。首次安装使用 DMG；后续 Preview 的实际更新方式以[下载页](/download)所列版本为准。
 
 首版面向 macOS 13+ 的 Apple Silicon Mac。下载页会显示公开版本、系统要求、签名状态、文件大小、SHA-256 和 GitHub Release。
 
@@ -23,8 +23,10 @@ v0.1.0-alpha.1 不包含更新源配置，必须从下载页取得新版 DMG 并
 
 下载页的版本信息、DMG 地址和 SHA-256 来自同一份公开清单，GitHub Release 提供对应的完整更新说明。当前不会在后台静默安装、替换或重启应用。
 
+如果 macOS 提示“Koyori.app 已损坏，无法打开”，请先核对官方 Release 下载来源和 SHA-256，再按[下载页的首次打开 FAQ](/download#damaged-app)处理。
+
 ## Preview 限制
 
-Preview 面向 macOS 13+ Apple Silicon，用于本机测试，不承诺 Intel 原生支持或跨平台安装。未公证版本会按实际签名状态标记，可能需要在 macOS“隐私与安全性”中手动允许打开。应用内更新由安装包中的更新源配置决定；当前 alpha.1 没有该配置。公开下载只在同一候选完成安装验收与产物校验后开放。
+Preview 面向 macOS 13+ Apple Silicon，用于本机测试，不承诺 Intel 原生支持或跨平台安装。未公证版本会按实际签名状态标记，可能需要在 macOS“隐私与安全性”中手动允许打开。应用内更新由安装包中的更新源配置决定；alpha.1 没有该配置，需手动替换。公开下载只在同一候选完成安装验收与产物校验后开放。
 
 每份公开清单都绑定版本、构建 commit、文件大小和 SHA-256。重新构建后的文件即使版本号相同，也不能沿用之前文件的校验结果。

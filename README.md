@@ -10,11 +10,21 @@ Koyori 是自用优先、从首版按开源方式建设的 AI Native 个人工�
 
 ## 当前状态
 
-**Skills 管理与自配模型文字对话已进入 Preview。** v0.1.0-alpha.1 已公开发布，使用 Apple Development 签名、未公证，需手动安装和更新。桌面端可自动发现 Claude Code 与 Codex Skills、核对使用证据，预览并执行完整目录同步、项目级受管部署与撤销、本地快照和恢复。Git 备份已通过隔离仓库往返验收。
+**Skills 管理与自配模型文字对话已进入 Preview。** 当前公开版为 v0.1.0-alpha.4，使用 Apple Development 签名、未公证；安装包和更新方式见[下载页](https://koyori.cosine.ren/download/)。桌面端可自动发现 Claude Code 与 Codex Skills、核对使用证据，预览并执行完整目录同步、项目级受管部署与撤销、本地快照和恢复。Git 备份已通过隔离仓库往返验收。
 
 个人 Agent 支持 OpenAI-compatible 模型连接、本地会话、流式回复与取消，不自动发送 Skills 或日志。选定 Skill 后可在 Agent 中预览并确认“始终保留”或“30 天后复查”本地操作卡。“我的服务”可在本机保存常用入口，并由系统默认浏览器打开 HTTPS 或本机回环 HTTP 地址；Bot 配对、通用工具操作卡和语音仍待实现。[文档站](https://koyori.cosine.ren/)已通过正式 HTTPS 检查；验证记录与剩余范围见[实施状态](docs/implementation-status.md)。
 
 选中一项 Skill 后，可将使用证据与覆盖缺口生成摘要，预览并加入 Agent 草稿，再手动发送讨论。摘要不自动携带 Skill 正文、描述、路径或原始会话，已有草稿会保留。
+
+## macOS 首次打开
+
+从[下载页](https://koyori.cosine.ren/download/)获取 DMG，把 Koyori 拖入“应用程序”后打开。当前 Preview 尚未经过 Apple 公证。如果 macOS 提示“Koyori.app 已损坏，无法打开”（或 “Koyori.app is damaged and can't be opened”），先确认 DMG 来自本项目的 GitHub Release，并与下载页的 SHA-256 一致。退出 Koyori 后，在终端运行：
+
+```sh
+sudo xattr -r -d com.apple.quarantine /Applications/Koyori.app
+```
+
+这只移除该应用的下载隔离属性，不会为它补上公证；仅在核对下载来源和摘要后使用。随后从“应用程序”重新打开 Koyori。其他安装与更新说明见[安装指南](https://koyori.cosine.ren/docs/installation)。
 
 ## 本地开发
 

@@ -699,6 +699,26 @@ img {
   font-weight: 700;
 }
 
+.download-steps {
+  margin-bottom: 1.5rem;
+}
+
+.installation-command {
+  margin: 1.25rem 0;
+  padding: 1rem 1.25rem;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 0.85rem;
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.installation-command code {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.86rem;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 .changelog-paper {
   position: relative;
   margin-bottom: 7rem;

@@ -117,14 +117,14 @@ export default function DownloadPage() {
           </dl>
         </section>
 
-        <section className="section-wrap prose-card">
+        <section className="section-wrap prose-card download-steps">
           <h2>{releaseManifest.installation === "automatic" ? "应用内更新" : "手动安装与更新"}</h2>
           {releaseManifest.installation === "automatic" ? (
             <ol>
               <li>
                 首次安装或从手动更新版迁移时，先下载 DMG，将 Koyori 拖入 Applications 并替换旧版。
               </li>
-              <li>在侧栏展开“更新”，查看自动检查结果或点击“检查更新”。</li>
+              <li>在侧栏打开“更新”页面，查看自动检查结果或点击“检查更新”。</li>
               <li>看到新版本后，点击下载并等待应用完成下载。</li>
               <li>确认重启安装；应用只会在你的操作后退出并替换为新版本。</li>
             </ol>
@@ -146,6 +146,27 @@ export default function DownloadPage() {
             <Link to="/changelog">更新记录</Link>。
           </p>
         </section>
+
+        {releaseManifest.signing !== "notarized" && (
+          <section className="section-wrap prose-card" aria-labelledby="damaged-app">
+            <h2 id="damaged-app">提示“Koyori.app 已损坏，无法打开”？</h2>
+            <p>
+              当前 Preview 未经过 Apple 公证，macOS 可能显示此提示（英文为 “Koyori.app is damaged
+              and can't be opened”）。请先确认 DMG 来自上方的 GitHub Release，并核对下载文件的
+              SHA-256 与本页一致；摘要不一致时请重新下载。
+            </p>
+            <ol>
+              <li>退出 Koyori，把 DMG 中的应用拖入“应用程序”。</li>
+              <li>打开“终端”，对已安装的 Koyori 运行下面的命令：</li>
+            </ol>
+            <pre className="installation-command">
+              <code>sudo xattr -r -d com.apple.quarantine /Applications/Koyori.app</code>
+            </pre>
+            <p>
+              这只移除该应用的下载隔离属性，不会为它补上公证。运行后，从“应用程序”重新打开 Koyori。
+            </p>
+          </section>
+        )}
       </PageShell>
     );
   }
