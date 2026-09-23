@@ -34,7 +34,7 @@ jobs:
           curl --fail http://127.0.0.1:8080/docs/skills-management/ -o /dev/null
           curl --fail http://127.0.0.1:8080/docs/agent/ -o /dev/null
           curl --fail http://127.0.0.1:8080/download/ -o /dev/null
-          for route in /docs/agent /docs/skill-usage /search /download; do
+          for route in /docs/agent /docs/skill-usage /download; do
             redirect=$(curl --fail --silent --show-error --max-time 5 -D - -o /dev/null \
               -H 'Host: docs.example' -H 'X-Forwarded-Proto: https' \
               "http://127.0.0.1:8080$route" | awk 'tolower($1) == "location:" { sub("\r$", "", $2); print $2 }')
@@ -42,6 +42,7 @@ jobs:
             curl --fail --location --max-redirs 2 --max-time 5 "http://127.0.0.1:8080$route" -o /dev/null
           done
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/missing-page)" = 404
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/search/)" = 404
   desktop:
     needs: check
     runs-on: macos-15

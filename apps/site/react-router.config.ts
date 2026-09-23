@@ -1,6 +1,6 @@
-import type { Config } from "@react-router/dev/config";
 import { readdir } from "node:fs/promises";
 import { extname, join, relative, sep } from "node:path";
+import type { Config } from "@react-router/dev/config";
 
 async function collectDocs(directory: string, root = directory): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -14,9 +14,7 @@ async function collectDocs(directory: string, root = directory): Promise<string[
     }
     if (extname(entry.name) !== ".mdx") continue;
 
-    const segments = relative(root, absolutePath)
-      .slice(0, -extname(entry.name).length)
-      .split(sep);
+    const segments = relative(root, absolutePath).slice(0, -extname(entry.name).length).split(sep);
     const slug = segments.at(-1) === "index" ? segments.slice(0, -1) : segments;
     paths.push(slug.length === 0 ? "/docs" : `/docs/${slug.join("/")}`);
   }
@@ -32,7 +30,6 @@ export default {
       "/",
       "/download",
       "/changelog",
-      "/search",
       ...(await collectDocs("content/docs")),
     ]);
     return [...paths];

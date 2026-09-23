@@ -1,12 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router";
+import { useMemo, useRef, useState } from "react";
+import { Link } from "react-router";
 import { searchablePages } from "../lib/site-content";
 
 export function SiteSearch({ className = "" }: { className?: string }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const followingResultRef = useRef(false);
-  const location = useLocation();
-  const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const normalized = query.trim().toLocaleLowerCase("zh-CN");
   const results = useMemo(
@@ -21,25 +18,12 @@ export function SiteSearch({ className = "" }: { className?: string }) {
     [normalized],
   );
 
-  useEffect(() => {
-    if (location.pathname === "/search") {
-      if (!dialogRef.current?.open) dialogRef.current?.showModal();
-    }
-  }, [location.pathname]);
-
   function close() {
     dialogRef.current?.close();
   }
 
   function handleClose() {
     setQuery("");
-    if (followingResultRef.current) {
-      followingResultRef.current = false;
-      return;
-    }
-    if (location.pathname === "/search") {
-      navigate("/", { replace: true });
-    }
   }
 
   return (
@@ -100,14 +84,7 @@ export function SiteSearch({ className = "" }: { className?: string }) {
             {results.length > 0 ? (
               <div className="site-search-results">
                 {results.map((page) => (
-                  <Link
-                    key={page.href}
-                    to={page.href}
-                    onClick={() => {
-                      followingResultRef.current = true;
-                      close();
-                    }}
-                  >
+                  <Link key={page.href} to={page.href} onClick={close}>
                     <span>
                       <strong>{page.title}</strong>
                       <small>{page.description}</small>
