@@ -38,6 +38,10 @@ pnpm dev
 
 `pnpm dev:site` 启动独立文档站；`pnpm koyori --help` 查看 CLI。首次启动会检测 Claude Code 与 Codex 的已知目录；项目目录只在你登记项目后检查，系统目录保持只读。同步和恢复始终先预览计划，使用统计默认关闭。开发与检查命令见 [贡献指南](CONTRIBUTING.md)，当前结果与下一步见 [实施状态](docs/implementation-status.md)。
 
+## 维护者发版
+
+在支持项目 Skills 的 Codex 会话中使用 [`$oneshot`](.agents/skills/oneshot/SKILL.md)，例如“`$oneshot 发布下一个 Preview`”或“`$oneshot 继续 v<版本号>`”。它会准备版本说明，等 main CI 通过后接着触发受保护的 macOS Release，再更新下载页和文档站；中断后从远端已完成的步骤继续。日常验收由 CI 和发布工作流完成。它是代理工作流，**不是** `pnpm` 命令。具体构建模式与恢复规则见 [macOS 签名与发布](docs/release-signing.md)。
+
 ## 计划管理什么
 
 | 资源 | 目标能力 |
