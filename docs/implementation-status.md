@@ -4,11 +4,11 @@
 
 ## 当前迭代
 
-当前推进 `0.1.0-alpha.1` 的 MVP 应用开发：Preview 更新与发布代码已进入功能分支，项目级 Skills 部署/撤销、本地操作卡和“我的服务”入口仍在开发。macOS 证书及公证凭据未就绪，首个公开候选可选择未签名的手动安装模式；尚未发布下载清单或公开安装包。配置指南见 [macOS 签名与发布](release-signing.md)。
+当前推进 `0.1.0-alpha.1` 的 MVP 应用开发：Preview 更新与发布代码、项目级 Skills 部署/撤销、本地操作卡和“我的服务”入口已进入功能分支。macOS 证书及公证凭据未就绪，首个公开候选可选择未签名的手动安装模式；尚未发布下载清单或公开安装包。配置指南见 [macOS 签名与发布](release-signing.md)。
 
 此前单 Skill 讨论已随 [PR #5](https://github.com/yusixian/koyori/pull/5) 合并，main `1b3a0e76974d21c7f091966755b7472ac819d831` 的 [CI 35712164007](https://github.com/yusixian/koyori/actions/runs/35712164007) 通过；该提交已于上轮在 Dokploy 核验部署，公开 HTTPS 的指南、下载、搜索等路由检查通过。下列旧版本记录保留为历史证据。
 
-个人 Agent 支持自配 OpenAI-compatible Chat Completions 连接进行本地文字会话，并保留连接隔离、取消、错误和未知用量状态。
+个人 Agent 支持自配 OpenAI-compatible Chat Completions 连接进行本地文字会话，并保留连接隔离、取消、错误和未知用量状态；“我的服务”支持登记本机书签并显式用系统浏览器打开。
 
 Skills 管理切片已经通过独立 review、CI 和真实 Electron 验收，[PR #1](https://github.com/yusixian/koyori/pull/1) 与文档跟进的 [PR #2](https://github.com/yusixian/koyori/pull/2) 已合并。文档站已部署到独立 Dokploy 应用，正式域名的 DNS/HTTPS 已实测；当前已核验的文档部署 commit 为 `e128a9392c22701ccb73817287a8733d11d295db`，Agent 文字对话指南已上线。本轮 Agent 文字基础已通过真实 Electron 与 CI，[PR #3](https://github.com/yusixian/koyori/pull/3) 已合并；单 Skill 讨论已实现，独立数据边界 review 未发现 P1/P2；本轮 CI、合并和讨论指南部署的交付记录见 [PR #5](https://github.com/yusixian/koyori/pull/5)。完整 0.1 还包括 Git 备份真实账号验收、个人 Bot 接入和公开分发。
 
@@ -19,6 +19,13 @@ Skills 管理切片已经通过独立 review、CI 和真实 Electron 验收，[P
 - 本地会话支持新建、切换、改名和删除；发送后逐段显示文字，支持取消。失败、取消和应用退出中断会保留对应状态，服务没有返回 token 用量时保持未知。
 - 请求只携带当前会话文字，不自动发送 Skills、使用账本、目录或日志；当前 Agent 以纯文本回复为主，没有本机写入工具。
 - Bot 桌面通道/API、工具操作卡、语音和公开发行仍未实现；后端参考方案见 [后端与统一域名](design/backend.md)，不把私有 Bot 实现带入公开工程。
+
+## 我的服务（本轮开发版）
+
+- 可登记名称和 HTTPS 或本机回环 HTTP 地址，并查看、修改、移除；服务设置仅保存在本机。
+- 打开动作仅接受已登记服务 ID，主进程重新校验地址后交给系统默认浏览器。Electron 继续禁止远程导航和新窗口，外部网页不嵌入应用，也不获得 IPC。
+- 保存不探测地址或调用服务 API。拒绝非回环 HTTP、URL 凭据、查询参数和片段；当前没有 Bot 配对、远程工具或 Koyori 云 API。
+- 无效设置不会覆盖原文件；写入前保留备份，错误显示可检查的数据目录或恢复文件信息。
 
 ## Skills → Agent 单 Skill 讨论（开发版）
 

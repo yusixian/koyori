@@ -8,6 +8,7 @@ import { createAgentController } from "./agent-controller";
 import { createManagementController } from "./management-controller";
 import { createRemoteBackupController } from "./remote-backup-controller";
 import { createUpdateController, prepareUpdateInstallation } from "./update-controller";
+import { createServicesController } from "./services-controller";
 import { createUsageController } from "./usage-controller";
 import { createWorkspaceController } from "./workspace-controller";
 
@@ -169,6 +170,11 @@ else {
           path: join(dataDir, "agent.json"),
           trusted,
           changed: agentChanged,
+        });
+        await createServicesController({
+          path: join(dataDir, "services.json"),
+          trusted,
+          openExternal: (url) => shell.openExternal(url),
         });
         workspace = await createWorkspaceController({
           path: join(dataDir, "sources.json"),

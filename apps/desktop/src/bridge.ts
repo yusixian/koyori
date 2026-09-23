@@ -13,6 +13,14 @@ import type {
 } from "@koyori/core";
 import type { AgentConnectionInput, AgentView } from "./agent-types";
 
+export interface RegisteredService {
+  id: string;
+  name: string;
+  url: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface SourceTarget {
   id: string;
   client: ClientId;
@@ -192,6 +200,10 @@ export interface KoyoriBridge {
   fetchRemoteBackup(commit: string): Promise<RemoteBackupView>;
   setAutomaticBackup(enabled: boolean, skillIds: string[]): Promise<RemoteBackupView>;
   cancelRemoteBackup(): Promise<void>;
+  getServices(): Promise<RegisteredService[]>;
+  saveService(input: { id?: string; name: string; url: string }): Promise<RegisteredService[]>;
+  removeService(id: string): Promise<RegisteredService[]>;
+  openService(id: string): Promise<void>;
 }
 declare global {
   const __APP_VERSION__: string;

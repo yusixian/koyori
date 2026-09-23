@@ -718,48 +718,170 @@ select {
 .issue code {
   font-size: 9px;
 }
-.coming {
-  max-width: 620px;
-  margin: 55px auto 0;
+.services-page {
+  max-width: 1120px;
+  margin: 28px auto 0;
+  padding-bottom: 34px;
+}
+.services-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 30px 0 27px;
+}
+.services-heading > div:first-child > p:last-child {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 10px;
+}
+.services-layout {
+  display: grid;
+  grid-template-columns: minmax(275px, 0.78fr) minmax(390px, 1.22fr);
+  gap: 18px;
+  align-items: start;
+}
+.service-editor,
+.service-list {
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #fff;
+  padding: 19px;
+  min-width: 0;
+}
+.service-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 17px;
+}
+.service-section-heading .eyebrow {
+  margin-bottom: 5px;
+}
+.service-section-heading h2 {
+  font-size: 16px;
+}
+.service-count {
+  color: #a38f98;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.service-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+.service-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  color: #84747c;
+  font-size: 11px;
+}
+.service-form input {
+  height: 39px;
+  min-width: 0;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 0 11px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 11px;
+}
+.service-form input:focus-visible {
+  outline-offset: 1px;
+}
+.service-form .button {
+  align-self: flex-start;
+  margin-top: 2px;
+}
+.service-items {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+}
+.service-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid #f0e8eb;
+  border-radius: 8px;
+  background: #fffdfd;
+}
+.service-card-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+.service-card-copy strong {
+  font-size: 12px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.service-card-copy code {
+  display: block;
+  max-width: 100%;
+  color: #a28f98;
+  font-family: inherit;
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+.service-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+}
+.service-actions .button {
+  padding: 8px 10px;
+  font-size: 10px;
+}
+.service-actions .text-button {
+  padding: 8px 3px;
+}
+.service-remove {
+  color: #a66e79;
+}
+.service-empty {
+  min-height: 150px;
+  border: 1px dashed #eadde2;
+  border-radius: 8px;
+  color: #a18e97;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 20px;
   text-align: center;
-  padding: 20px 25px;
+  font-size: 11px;
 }
-.coming > img {
-  width: 108px;
-  height: 108px;
-  border-radius: 32px;
-  margin-bottom: 28px;
-  box-shadow: 0 12px 32px #c982a015;
+.service-empty svg {
+  color: #c28da0;
 }
-.coming > p:not(.eyebrow) {
-  font-size: 13px;
-  color: #9c8895;
-  margin: 18px auto 0;
-  max-width: 420px;
+.service-empty strong {
+  color: #786a70;
+  font-size: 12px;
+}
+.service-footnote {
+  margin-top: 16px;
+  max-width: 850px;
+  color: #a19198;
+  font-size: 10px;
   line-height: 1.9;
 }
-.planned {
-  text-align: left;
-  border: 1px solid #eadce4;
-  border-radius: 10px;
-  background: #fffcfd;
-  padding: 20px 25px;
-  margin: 30px 0;
-}
-.planned > span {
-  font-size: 10px;
-  color: #b5a1ad;
-}
-.planned strong {
-  font-size: 11px;
-  color: #aa6985;
-  float: right;
-}
-.planned p {
-  font-size: 12px;
-  line-height: 1.8;
-  color: #a18b98;
-  margin-top: 10px;
+.services-error {
+  margin-bottom: 16px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
 }
 .spinning {
   animation: spin 1.4s linear infinite;
@@ -797,6 +919,16 @@ select {
   }
   .toolbar {
     flex-wrap: wrap;
+  }
+  .services-layout {
+    grid-template-columns: 1fr;
+  }
+  .service-card {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .service-actions {
+    align-self: flex-end;
   }
   .search {
     flex-basis: 200px;

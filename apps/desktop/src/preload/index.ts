@@ -72,6 +72,10 @@ const bridge: KoyoriBridge = {
   fetchRemoteBackup: (commit) => ipcRenderer.invoke("backup:remote:fetch", commit),
   setAutomaticBackup: (enabled, ids) => ipcRenderer.invoke("backup:remote:automatic", enabled, ids),
   cancelRemoteBackup: () => ipcRenderer.invoke("backup:remote:cancel"),
+  getServices: () => ipcRenderer.invoke("services:get"),
+  saveService: (input) => ipcRenderer.invoke("services:save", input),
+  removeService: (id) => ipcRenderer.invoke("services:remove", id),
+  openService: (id) => ipcRenderer.invoke("services:open", id),
   openProject: () => ipcRenderer.invoke("project:open"),
 };
 contextBridge.exposeInMainWorld("koyori", bridge);
