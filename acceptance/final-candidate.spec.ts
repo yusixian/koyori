@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 
 async function fixture() {
@@ -109,15 +109,20 @@ test("register a project, preview and deploy a Skill, then revoke into recoverab
     await expect(readFile(join(target, "SKILL.md"))).rejects.toMatchObject({ code: "ENOENT" });
     const state = await page.evaluate(() => window.koyori.getManagement());
     const revoked = state.projectDeployments.find((item) => item.targetPath === target);
-    expect(revoked?.recoveryPath?.startsWith(join(isolated.userData, "management"))).toBe(true);
+    const recoveryPath = revoked?.recoveryPath;
+    expect(recoveryPath).toBeTruthy();
+    if (!recoveryPath) throw new Error("Missing project recovery path");
+    expect(dirname(recoveryPath)).toBe(join(project, ".claude", "skills"));
+    expect(basename(recoveryPath)).toMatch(/^\.koyori-recovery-fixture-deploy-[0-9a-f-]{36}$/);
     const revokeOperation = state.operations.find((item) => item.kind === "project-revoke");
     expect(revokeOperation?.status).toBe("succeeded");
-    expect(revokeOperation?.items[0]?.recoveryPath).toBe(revoked?.recoveryPath);
+    expect(revokeOperation?.items[0]?.recoveryPath).toBe(recoveryPath);
+    await expect(projectCard).toContainText(recoveryPath);
     const history = management.getByRole("region", { name: "最近文件操作" });
     await history.locator("summary").first().click();
-    await expect(history).toContainText(revoked?.recoveryPath ?? "missing recovery path");
-    expect(await readFile(join(revoked?.recoveryPath ?? "", "SKILL.md"), "utf8")).toBe(skill);
-    expect(await readFile(join(revoked?.recoveryPath ?? "", "assets", "proof.txt"), "utf8")).toBe(
+    await expect(history).toContainText(recoveryPath);
+    expect(await readFile(join(recoveryPath, "SKILL.md"), "utf8")).toBe(skill);
+    expect(await readFile(join(recoveryPath, "assets", "proof.txt"), "utf8")).toBe(
       "synthetic asset\n",
     );
     expect(await readFile(join(source, "SKILL.md"), "utf8")).toBe(skill);
