@@ -211,7 +211,7 @@ export function UsagePanel({ inventory, roots, onChange }: UsagePanelProps) {
           <BarChart3 size={23} />
         </div>
         <div>
-          <p className="usage-kicker">USAGE LEDGER</p>
+          <p className="usage-kicker">使用记录</p>
           <h2 id="usage-heading">先扫描 Skills，再建立使用账本</h2>
           <p>
             账本只会关联本次扫描到的真实资源。完成扫描后，可主动选择 Claude Code
@@ -233,12 +233,15 @@ export function UsagePanel({ inventory, roots, onChange }: UsagePanelProps) {
   const selectedUsage = selectedSkillId ? usageBySkillId.get(selectedSkillId) : undefined;
   const selectedSkill = selectedSkillId ? inventoryById.get(selectedSkillId) : undefined;
   const reviewDue = isWeeklyReviewDue(view?.lastReviewedAt ?? null);
+  const hasUsageContent = Boolean(
+    view?.lastImportedAt || inventory.skills.length || view?.report.unattributed.length,
+  );
 
   return (
     <section className="usage-panel" aria-labelledby="usage-heading">
       <header className="usage-header">
         <div>
-          <p className="usage-kicker">LOCAL EVIDENCE</p>
+          <p className="usage-kicker">本机证据</p>
           <h2 id="usage-heading">使用账本与复查偏好</h2>
           <p>从本机日志提取最小事件，不保留会话原文。调用证据不代表任务成功。</p>
         </div>
@@ -403,7 +406,14 @@ export function UsagePanel({ inventory, roots, onChange }: UsagePanelProps) {
         </div>
       </div>
 
-      {view && (
+      {view && !hasUsageContent && (
+        <div className="usage-first-step">
+          <BarChart3 size={24} aria-hidden="true" />
+          <strong>连接历史后，这里会显示使用证据</strong>
+          <p>先在上方连接 Claude Code 历史目录。导入后再查看覆盖范围、逐资源记录与整理建议。</p>
+        </div>
+      )}
+      {view && hasUsageContent && (
         <>
           <fieldset
             className="usage-metrics"
@@ -436,7 +446,7 @@ export function UsagePanel({ inventory, roots, onChange }: UsagePanelProps) {
           <section className="usage-section" aria-labelledby="coverage-heading">
             <div className="usage-section-heading">
               <div>
-                <p className="usage-kicker">COVERAGE</p>
+                <p className="usage-kicker">覆盖情况</p>
                 <h3 id="coverage-heading">证据覆盖与限制</h3>
               </div>
               <span>
@@ -481,7 +491,7 @@ export function UsagePanel({ inventory, roots, onChange }: UsagePanelProps) {
           <section className="usage-section" aria-labelledby="skills-usage-heading">
             <div className="usage-section-heading">
               <div>
-                <p className="usage-kicker">BY RESOURCE</p>
+                <p className="usage-kicker">按资源查看</p>
                 <h3 id="skills-usage-heading">逐资源账本与偏好</h3>
               </div>
               <span>{inventory.skills.length} 份已扫描资源</span>
@@ -581,7 +591,7 @@ export function UsagePanel({ inventory, roots, onChange }: UsagePanelProps) {
           <section className="usage-section" aria-labelledby="unattributed-heading">
             <div className="usage-section-heading">
               <div>
-                <p className="usage-kicker">UNATTRIBUTED</p>
+                <p className="usage-kicker">尚未归属</p>
                 <h3 id="unattributed-heading">未归因名字排行</h3>
               </div>
               <span>同名资源不会猜测归属</span>
@@ -613,7 +623,7 @@ export function UsagePanel({ inventory, roots, onChange }: UsagePanelProps) {
           <section className="usage-section" aria-labelledby="suggestions-heading">
             <div className="usage-section-heading">
               <div>
-                <p className="usage-kicker">REVIEW NOTES</p>
+                <p className="usage-kicker">复查建议</p>
                 <h3 id="suggestions-heading">整理建议</h3>
               </div>
               <span>仅供查看、保留与复查</span>
@@ -653,7 +663,7 @@ export function UsagePanel({ inventory, roots, onChange }: UsagePanelProps) {
           <section className="usage-settings" aria-labelledby="usage-rules-heading">
             <div className="usage-section-heading">
               <div>
-                <p className="usage-kicker">REVIEW RHYTHM</p>
+                <p className="usage-kicker">复查节奏</p>
                 <h3 id="usage-rules-heading">规则与人工复查</h3>
               </div>
               <span>规则只生成建议</span>

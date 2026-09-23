@@ -88,6 +88,7 @@ test("skill discussion previews selected evidence and sends only the edited draf
     expect(requests).toHaveLength(0);
     await preview.getByRole("button", { name: "丢弃摘要" }).click();
     await expect(preview).not.toBeVisible();
+    await page.locator(".agent-heading").getByRole("button", { name: "连接设置" }).click();
     await page.getByLabel("连接名称", { exact: true }).fill("摘要验收连接");
     await page.getByLabel("服务地址", { exact: true }).fill(`http://127.0.0.1:${address.port}/v1`);
     await page.getByLabel("模型", { exact: true }).fill("synthetic-discussion-model");

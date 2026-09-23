@@ -94,6 +94,9 @@ export function ManagementPanel({
     }
   }, [initialSkillId]);
   useEffect(() => {
+    if (plan) document.querySelector(".plan-preview")?.scrollIntoView({ block: "start" });
+  }, [plan]);
+  useEffect(() => {
     let disposed = false;
     const update = () => {
       const requestId = ++requestIdRef.current;
@@ -214,7 +217,7 @@ export function ManagementPanel({
           </div>
         </section>
         <section className="management-card">
-          <p className="eyebrow">SYNC & PRESERVE</p>
+          <p className="eyebrow">同步与保留</p>
           <h2>放到另一个客户端</h2>
           <label className="management-field">
             同步目标
@@ -290,11 +293,11 @@ export function ManagementPanel({
           </button>
         </section>
       </div>
-      <section className="management-card" aria-label="项目 Skills 部署">
-        <div className="section-title">
+      <details className="management-card management-disclosure" aria-label="项目 Skills 部署">
+        <summary className="section-title">
           <h2>部署到项目</h2>
           <span>一次选择一项 Skill</span>
-        </div>
+        </summary>
         <p className="management-hint">
           把完整 Skill 目录复制到已登记项目的客户端目录。已有同名目录不会被接管或替换。 原 Skill
           如果仍在全局扫描目录，撤销项目副本后客户端仍可能看到它。
@@ -387,7 +390,7 @@ export function ManagementPanel({
         {view?.projectDeployments.length === 0 && (
           <p className="muted">还没有 Koyori 登记的项目部署。</p>
         )}
-      </section>
+      </details>
       {plan && (
         <section className="management-card plan-preview" aria-label="操作计划">
           <div className="section-title">
@@ -468,9 +471,12 @@ export function ManagementPanel({
           </div>
         </section>
       )}
-      <section className="management-card" aria-label="本地备份历史">
-        <div className="section-title">
+      <details className="management-card management-disclosure" aria-label="本地备份历史">
+        <summary className="section-title">
           <h2>本地恢复快照</h2>
+          <span>{view?.backups.length ?? 0} 份</span>
+        </summary>
+        <div className="section-title">
           <button
             type="button"
             className="text-button"
@@ -540,12 +546,12 @@ export function ManagementPanel({
             还没有快照。可以先备份所选 Skills，之后的受管替换也会留下恢复材料。
           </p>
         )}
-      </section>
-      <section className="management-card" aria-label="最近文件操作">
-        <div className="section-title">
+      </details>
+      <details className="management-card management-disclosure" aria-label="最近文件操作">
+        <summary className="section-title">
           <h2>最近文件操作</h2>
           <span>最多保留展示 20 条</span>
-        </div>
+        </summary>
         <p className="management-hint">
           每项记录执行结果与恢复材料位置。进程中断时，先按这里显示的路径核对原目录。
         </p>
@@ -611,8 +617,11 @@ export function ManagementPanel({
           </details>
         ))}
         {view?.operations.length === 0 && <p className="muted">还没有受管文件操作记录。</p>}
-      </section>
-      <RemoteBackupPanel selectedSkillIds={effectiveSelection} backups={view?.backups ?? []} />
+      </details>
+      <details className="management-disclosure management-remote-disclosure">
+        <summary>远端备份</summary>
+        <RemoteBackupPanel selectedSkillIds={effectiveSelection} backups={view?.backups ?? []} />
+      </details>
       {disabled && (
         <div className="notice" role="status">
           正在检查或保存文件…{" "}

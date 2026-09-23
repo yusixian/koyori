@@ -107,11 +107,11 @@ test("selected roots, preview, persistence and no source writes", async () => {
     const update = await page.evaluate(() => window.koyori.getUpdate());
     const product = JSON.parse(await readFile(resolve("package.json"), "utf8"));
     expect(update.currentVersion).toBe(product.version);
-    await page.locator(".update-panel > summary").click();
+    await page.getByRole("button", { name: "更新", exact: true }).click();
     await expect(page.locator(".update-status")).toContainText(
       update.status === "unsupported" ? "更新仅在已配置更新源" : "尚未检查更新",
     );
-    await page.locator(".update-panel > summary").click();
+    await page.getByRole("button", { name: "Skills", exact: true }).click();
     await page.getByRole("button", { name: /先看看示例/ }).click();
     await expect(page.getByText("示例模式 · 以下资源为合成示例，没有读取本机文件。")).toBeVisible();
     await page.getByRole("button", { name: "退出示例" }).click();
@@ -130,8 +130,8 @@ test("selected roots, preview, persistence and no source writes", async () => {
     await expect(page.getByLabel("Skill 详情")).toContainText("尚未采集");
     await page.screenshot({ path: "artifacts/desktop-skills.png" });
     await page.setViewportSize({ width: 960, height: 640 });
-    await expect(page.getByRole("button", { name: "关闭详情" })).toBeVisible();
-    await page.getByRole("button", { name: "关闭详情" }).click();
+    await expect(page.getByRole("button", { name: "返回清单" })).toBeVisible();
+    await page.getByRole("button", { name: "返回清单" }).click();
     await expect(page.getByRole("button", { name: /acceptance-review/ })).toBeVisible();
     await page.getByRole("button", { name: "使用与建议", exact: true }).click();
     await app.evaluate(({ dialog }, directory) => {
@@ -269,14 +269,16 @@ test("automatic discovery, opt-in evidence, complete-folder sync and restore pre
     await page.getByRole("checkbox", { name: /fixture-writer/ }).check();
     await page.getByRole("button", { name: "备份所选 Skills" }).click();
     await expect(page.getByText("已在本机保存 1 项完整目录快照。")).toBeVisible();
+    await page.locator('details[aria-label="本地备份历史"] > summary').click();
     await page.getByRole("button", { name: /预览同步计划/ }).click();
     await expect(page.getByLabel("操作计划")).toContainText("2 个文件");
     await expect(readFile(join(destination, "SKILL.md"))).rejects.toMatchObject({ code: "ENOENT" });
     await page.getByRole("checkbox", { name: "我已检查目标、差异和兼容提示" }).check();
     await page.getByRole("button", { name: "确认执行同步" }).click();
     await expect(page.getByText("已完成 1 项，内容相同跳过 0 项。")).toBeVisible();
-    const operationHistory = page.getByRole("region", { name: "最近文件操作" });
+    const operationHistory = page.locator('details[aria-label="最近文件操作"]');
     await operationHistory.locator("summary").first().click();
+    await operationHistory.locator("summary").nth(1).click();
     await expect(operationHistory).toContainText(destination);
     await expect(operationHistory).toContainText("已完成");
     expect(await readFile(join(destination, "assets", "fixture.txt"), "utf8")).toBe(
@@ -292,6 +294,7 @@ test("automatic discovery, opt-in evidence, complete-folder sync and restore pre
     await page.screenshot({ path: "artifacts/desktop-management-960.png" });
     const bare = join(temporary, "remote.git");
     await promisify(execFile)("git", ["init", "--bare", bare]);
+    await page.locator(".management-remote-disclosure > summary").click();
     await page.getByRole("textbox", { name: "备份仓库地址" }).fill(bare);
     await page.getByRole("button", { name: "连接备份仓库", exact: true }).click();
     await expect(page.getByRole("button", { name: "断开远端", exact: true })).toBeVisible();
@@ -321,6 +324,7 @@ test("automatic discovery, opt-in evidence, complete-folder sync and restore pre
     page = await app.firstWindow();
     await expect(page.getByRole("button", { name: /fixture-writer/ })).toHaveCount(2);
     await page.getByRole("button", { name: "同步与备份", exact: true }).click();
+    await page.locator('details[aria-label="本地备份历史"] > summary').click();
     await expect(page.getByRole("button", { name: "预览原位恢复" }).first()).toBeVisible();
     expect(await readFile(join(source, "SKILL.md"), "utf8")).toBe(content);
   } finally {
