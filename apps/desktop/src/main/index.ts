@@ -7,8 +7,8 @@ import { createGitBackupStore } from "../../../../packages/core/src/git-backup";
 import { createAgentController } from "./agent-controller";
 import { createManagementController } from "./management-controller";
 import { createRemoteBackupController } from "./remote-backup-controller";
-import { createUpdateController, prepareUpdateInstallation } from "./update-controller";
 import { createServicesController } from "./services-controller";
+import { createUpdateController, prepareUpdateInstallation } from "./update-controller";
 import { createUsageController } from "./usage-controller";
 import { createWorkspaceController } from "./workspace-controller";
 
