@@ -22,7 +22,7 @@ jobs:
   build:
     name: Build and accept candidate
     runs-on: macos-15
-    timeout-minutes: 50
+    timeout-minutes: 80
     environment: preview-release
     permissions:
       actions: read
@@ -72,22 +72,14 @@ jobs:
           --commit "$GITHUB_SHA"
           --output "$GITHUB_OUTPUT"
 
-      - name: Require a first, unused public version
+      - name: Check first-release identity before building
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.prepare.outputs.tag }}
         run: |
           set -euo pipefail
-          published_releases=$(gh release list --exclude-drafts --limit 1 --json tagName --jq 'length')
-          test "$published_releases" -eq 0
-          if git ls-remote --exit-code --refs origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
-            echo "The release tag already exists." >&2
-            exit 1
-          fi
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            echo "The release already exists." >&2
-            exit 1
-          fi
+          node scripts/release-preview.mjs inspect-remote \
+            --repository "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" --commit "$GITHUB_SHA"
 
       - name: Build signed and notarized candidate
         if: inputs.distribution == 'signed'
@@ -109,16 +101,18 @@ jobs:
         if: inputs.distribution == 'manual'
         run: KOYORI_MANUAL_PREVIEW=1 pnpm package:mac
 
-      - name: Accept the packaged candidate
-        env:
-          KOYORI_EXECUTABLE: ${{ github.workspace }}/artifacts/mac-arm64/Koyori.app/Contents/MacOS/Koyori
+      - name: Accept applications from both public archives
         run: |
           set -euo pipefail
-          pnpm test:desktop
+          node scripts/accept-preview-archives.mjs \
+            --candidate artifacts/candidate.json \
+            --commit "$GITHUB_SHA" \
+            --output "$RUNNER_TEMP/koyori-archive-tests.json"
           node scripts/release-preview.mjs record-acceptance \
             --root . \
             --commit "$GITHUB_SHA" \
             --candidate artifacts/candidate.json \
+            --archiveTests "$RUNNER_TEMP/koyori-archive-tests.json" \
             --output artifacts/acceptance.json
 
       - name: Upload the accepted candidate
@@ -179,63 +173,78 @@ jobs:
           --version "$RELEASE_VERSION"
           --output "$GITHUB_OUTPUT"
 
-      - name: Recheck release preconditions
+      - name: Inspect remote Release and compare existing asset bytes
+        id: initial_state
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.verify.outputs.tag }}
         run: |
           set -euo pipefail
-          published_releases=$(gh release list --exclude-drafts --limit 1 --json tagName --jq 'length')
-          test "$published_releases" -eq 0
-          if git ls-remote --exit-code --refs origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
-            echo "The release tag already exists." >&2
-            exit 1
-          fi
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            echo "The release already exists." >&2
-            exit 1
-          fi
+          node scripts/release-preview.mjs inspect-remote \
+            --repository "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" \
+            --commit "$GITHUB_SHA" --local release-input \
+            --remote remote-assets-initial --plan release-plan-initial.json \
+            --output "$GITHUB_OUTPUT"
 
-      - name: Create draft prerelease from accepted files
+      - name: Create draft prerelease
+        if: steps.initial_state.outputs.action == 'create'
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.verify.outputs.tag }}
           RELEASE_NOTES: ${{ steps.verify.outputs.notes }}
-          RELEASE_VERSION: ${{ steps.verify.outputs.version }}
         run: |
           set -euo pipefail
-          assets=(
-            release-input/candidate.json
-            release-input/acceptance.json
-            "release-input/Koyori-$RELEASE_VERSION-arm64.dmg"
-            "release-input/Koyori-$RELEASE_VERSION-arm64.dmg.blockmap"
-            "release-input/Koyori-$RELEASE_VERSION-arm64.zip"
-            "release-input/Koyori-$RELEASE_VERSION-arm64.zip.blockmap"
-          )
-          if [ "${{ steps.verify.outputs.notarized }}" = "true" ]; then
-            assets+=(release-input/alpha-mac.yml)
-          fi
-          gh release create "$RELEASE_TAG" "${assets[@]}" \
+          gh release create "$RELEASE_TAG" \
             --target "$GITHUB_SHA" \
             --draft \
             --prerelease \
             --title "Koyori $RELEASE_TAG Preview" \
             --notes-file "$RELEASE_NOTES"
 
-      - name: Verify uploaded draft assets
+      - name: Reinspect draft before any upload
+        id: draft_state
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.verify.outputs.tag }}
         run: |
           set -euo pipefail
-          test "$(gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft')" = "true"
-          mkdir remote-assets
-          gh release download "$RELEASE_TAG" --dir remote-assets
-          node scripts/release-preview.mjs verify-remote \
-            --local release-input \
-            --remote remote-assets
+          node scripts/release-preview.mjs inspect-remote \
+            --repository "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" \
+            --commit "$GITHUB_SHA" --local release-input \
+            --remote remote-assets-draft --plan release-plan-draft.json \
+            --output "$GITHUB_OUTPUT"
+
+      - name: Upload only missing accepted assets
+        if: steps.draft_state.outputs.action == 'upload'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.verify.outputs.tag }}
+        run: |
+          set -euo pipefail
+          mapfile -t missing < <(jq -r '.missing[]' release-plan-draft.json)
+          assets=()
+          for file in "${missing[@]}"; do
+            assets+=("release-input/$file")
+          done
+          gh release upload "$RELEASE_TAG" "${assets[@]}"
+
+      - name: Verify complete remote asset set before publishing
+        id: complete_state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.verify.outputs.tag }}
+        run: |
+          set -euo pipefail
+          node scripts/release-preview.mjs inspect-remote \
+            --repository "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" \
+            --commit "$GITHUB_SHA" --local release-input \
+            --remote remote-assets-complete --plan release-plan-complete.json \
+            --output "$GITHUB_OUTPUT"
+          action=$(jq -r '.action' release-plan-complete.json)
+          test "$action" = "publish" || test "$action" = "published"
 
       - name: Publish the verified prerelease
+        if: steps.complete_state.outputs.action == 'publish'
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.verify.outputs.tag }}
@@ -247,6 +256,11 @@ jobs:
           RELEASE_TAG: ${{ steps.verify.outputs.tag }}
         run: |
           set -euo pipefail
+          node scripts/release-preview.mjs inspect-remote \
+            --repository "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" \
+            --commit "$GITHUB_SHA" --local release-input \
+            --remote remote-assets-published --plan release-plan-published.json
+          test "$(jq -r '.action' release-plan-published.json)" = "published"
           test "$(gh release view "$RELEASE_TAG" --json isDraft,isPrerelease --jq '.isDraft == false and .isPrerelease == true')" = "true"
           release_commit=$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq '.sha')
           test "$release_commit" = "$GITHUB_SHA"

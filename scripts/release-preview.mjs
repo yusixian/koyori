@@ -1,7 +1,10 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { createWriteStream } from "node:fs";
 import { appendFile, lstat, mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { parse as parseYaml } from "yaml";
@@ -38,10 +41,11 @@ const ACCEPTANCE_KEYS = [
   "acceptedAt",
   "platform",
   "arch",
-  "packagedApplication",
+  "testedArchives",
   "upgrade",
 ];
 const UPGRADE_KEYS = ["status", "reason"];
+const TESTED_ARCHIVE_KEYS = ["file", "sha256", "bytes", "application"];
 
 export async function preparePreview({ root, commit }) {
   requireCommit(commit);
@@ -64,6 +68,7 @@ export async function recordAcceptance({
   candidatePath,
   outputPath,
   commit,
+  archiveTestsPath,
   now = new Date(),
 }) {
   const packageJson = await readJson(join(root, "package.json"), "root package");
@@ -71,6 +76,7 @@ export async function recordAcceptance({
   const candidate = await readCandidate(candidatePath, { version, commit });
   await verifyCandidateArtifacts(dirname(candidatePath), candidate);
   if (candidate.notarized) await verifyUpdateMetadata(dirname(candidatePath), candidate);
+  const testedArchives = await readArchiveTests(archiveTestsPath, candidate);
   const candidateSha256 = await sha256(candidatePath);
   const acceptance = {
     schemaVersion: 1,
@@ -80,7 +86,7 @@ export async function recordAcceptance({
     acceptedAt: now.toISOString(),
     platform: "darwin",
     arch: "arm64",
-    packagedApplication: "mac-arm64/Koyori.app",
+    testedArchives,
     upgrade: {
       status: "not-applicable",
       reason: "first-public-release",
@@ -88,6 +94,13 @@ export async function recordAcceptance({
   };
   await writeJsonAtomic(outputPath, acceptance);
   return acceptance;
+}
+
+export async function verifyArchiveInputs({ candidatePath, commit }) {
+  const candidate = await readCandidate(candidatePath, { commit });
+  await verifyCandidateArtifacts(dirname(candidatePath), candidate);
+  if (candidate.notarized) await verifyUpdateMetadata(dirname(candidatePath), candidate);
+  return expectedArchiveTests(candidate);
 }
 
 export async function verifyPublishInput({ root, directory, commit, version }) {
@@ -144,6 +157,161 @@ export async function verifyRemoteAssets({ localDirectory, remoteDirectory }) {
       throw new Error(`The downloaded Release asset does not match ${file}.`);
     }
   }
+}
+
+export async function verifyRemoteAssetSubset({ localDirectory, remoteDirectory, names }) {
+  const localFiles = await readdir(localDirectory);
+  const remoteFiles = (await readdir(remoteDirectory)).sort();
+  if (JSON.stringify(remoteFiles) !== JSON.stringify([...names].sort())) {
+    throw new Error("The draft contains an unexpected Release asset set.");
+  }
+  for (const file of remoteFiles) {
+    assertSafeFileName(file);
+    if (!localFiles.includes(file)) throw new Error(`Unexpected Release asset: ${file}.`);
+    const localPath = join(localDirectory, file);
+    const remotePath = join(remoteDirectory, file);
+    await requireRegularFile(localPath, file);
+    await requireRegularFile(remotePath, file);
+    const [localDigest, remoteDigest, localInfo, remoteInfo] = await Promise.all([
+      sha256(localPath),
+      sha256(remotePath),
+      lstat(localPath),
+      lstat(remotePath),
+    ]);
+    if (localDigest !== remoteDigest || localInfo.size !== remoteInfo.size) {
+      throw new Error(`The downloaded Release asset does not match ${file}.`);
+    }
+  }
+}
+
+export function planReleaseContinuation({
+  commit,
+  tag,
+  tagCommit,
+  release,
+  publishedTags,
+  localFiles,
+  remoteFiles,
+}) {
+  requireCommit(commit);
+  if (tagCommit !== null && tagCommit !== commit) {
+    throw new Error("The existing release tag points to a different commit.");
+  }
+  if (publishedTags.some((published) => published !== tag) || publishedTags.length > 1) {
+    throw new Error("This first-public-release workflow found another published Release.");
+  }
+  if (release === null) {
+    if (publishedTags.length) throw new Error("Published Release state is inconsistent.");
+    return { action: "create", missing: localFiles };
+  }
+  if (
+    release.tag_name !== tag ||
+    (tagCommit === null && release.target_commitish !== commit) ||
+    !release.prerelease
+  ) {
+    throw new Error("The existing Release has a different identity or is not a prerelease.");
+  }
+  if (release.draft && publishedTags.length) {
+    throw new Error("Draft and published Release state is inconsistent.");
+  }
+  if (!release.draft && (publishedTags.length !== 1 || tagCommit !== commit)) {
+    throw new Error("The published Release or tag cannot be verified.");
+  }
+  if (
+    new Set(remoteFiles).size !== remoteFiles.length ||
+    remoteFiles.some((name) => !localFiles.includes(name))
+  ) {
+    throw new Error("The Release contains unexpected or duplicate assets.");
+  }
+  const missing = localFiles.filter((name) => !remoteFiles.includes(name));
+  if (!release.draft && missing.length) {
+    throw new Error("The published Release is missing accepted assets.");
+  }
+  return { action: release.draft ? (missing.length ? "upload" : "publish") : "published", missing };
+}
+
+export async function inspectRemoteRelease({
+  repository,
+  tag,
+  commit,
+  localDirectory,
+  remoteDirectory,
+  token,
+  request = fetch,
+}) {
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(repository)) {
+    throw new Error("Invalid GitHub repository.");
+  }
+  if (!token) throw new Error("GH_TOKEN is required.");
+  requireCommit(commit);
+  const headers = {
+    Accept: "application/vnd.github+json",
+    Authorization: `Bearer ${token}`,
+    "X-GitHub-Api-Version": "2022-11-28",
+  };
+  const api = async (path, optional = false) => {
+    const response = await request(`https://api.github.com/repos/${repository}/${path}`, {
+      headers,
+    });
+    if (optional && response.status === 404) return null;
+    if (!response.ok) throw new Error(`GitHub API request failed with HTTP ${response.status}.`);
+    return response.json();
+  };
+  const releases = [];
+  for (let page = 1; page <= 10; page += 1) {
+    const entries = await api(`releases?per_page=100&page=${page}`);
+    if (!Array.isArray(entries)) throw new Error("Invalid GitHub Releases response.");
+    releases.push(...entries);
+    if (entries.length < 100) break;
+    if (page === 10) throw new Error("Release history is too large to verify the first version.");
+  }
+  const publishedTags = releases.filter((entry) => !entry.draft).map((entry) => entry.tag_name);
+  const matches = releases.filter((entry) => entry.tag_name === tag);
+  if (matches.length > 1) throw new Error("Multiple Releases claim the same tag.");
+  const release = matches[0] ?? null;
+  const tagRef = await api(`git/ref/tags/${encodeURIComponent(tag)}`, true);
+  const tagCommit = tagRef === null ? null : (await api(`commits/${encodeURIComponent(tag)}`)).sha;
+  if (release && !Array.isArray(release.assets)) {
+    throw new Error("Invalid GitHub Release assets response.");
+  }
+  const remoteFiles = release?.assets?.map((asset) => asset.name) ?? [];
+  const localFiles = localDirectory ? (await readdir(localDirectory)).sort() : remoteFiles;
+  for (const name of [...localFiles, ...remoteFiles]) assertSafeFileName(name);
+  const plan = planReleaseContinuation({
+    commit,
+    tag,
+    tagCommit,
+    release,
+    publishedTags,
+    localFiles,
+    remoteFiles,
+  });
+  if (localDirectory && remoteFiles.length) {
+    if (!remoteDirectory) throw new Error("A remote download directory is required.");
+    await mkdir(remoteDirectory, { recursive: true });
+    for (const asset of release.assets) {
+      if (!Number.isSafeInteger(asset.id) || asset.state !== "uploaded") {
+        throw new Error("The Release contains an incomplete asset.");
+      }
+      const response = await request(
+        `https://api.github.com/repos/${repository}/releases/assets/${asset.id}`,
+        { headers: { ...headers, Accept: "application/octet-stream" } },
+      );
+      if (!response.ok || !response.body) {
+        throw new Error(`Could not download Release asset ${asset.name}.`);
+      }
+      await pipeline(
+        Readable.fromWeb(response.body),
+        createWriteStream(join(remoteDirectory, asset.name), { flags: "wx" }),
+      );
+    }
+    await verifyRemoteAssetSubset({
+      localDirectory,
+      remoteDirectory,
+      names: remoteFiles,
+    });
+  }
+  return plan;
 }
 
 export async function createPreviewCatalog({ candidatePath, publishedAt, outputPath }) {
@@ -278,10 +446,12 @@ async function readAcceptance(path, expected) {
     !isIsoDate(acceptance.acceptedAt) ||
     acceptance.platform !== "darwin" ||
     acceptance.arch !== "arm64" ||
-    acceptance.packagedApplication !== "mac-arm64/Koyori.app"
+    !Array.isArray(acceptance.testedArchives)
   ) {
     throw new Error("acceptance.json does not describe this packaged candidate.");
   }
+  const candidate = await readCandidate(join(dirname(path), "candidate.json"), expected);
+  validateArchiveTests(acceptance.testedArchives, candidate);
   if (!isRecord(acceptance.upgrade)) throw new Error("acceptance.json upgrade is invalid.");
   requireExactKeys(acceptance.upgrade, UPGRADE_KEYS, "acceptance upgrade");
   if (
@@ -291,6 +461,41 @@ async function readAcceptance(path, expected) {
     throw new Error("This first-release workflow cannot claim an upgrade was verified.");
   }
   return acceptance;
+}
+
+async function readArchiveTests(path, candidate) {
+  if (!path) throw new Error("Archive test evidence is required.");
+  const receipt = await readJson(path, "archive test evidence");
+  requireExactKeys(receipt, ["testedArchives"], "archive test evidence");
+  return validateArchiveTests(receipt.testedArchives, candidate);
+}
+
+function expectedArchiveTests(candidate) {
+  return ["dmg", "zip"].map((extension) => {
+    const file = `Koyori-${candidate.version}-arm64.${extension}`;
+    const artifact = candidate.artifacts.find((entry) => entry.file === file);
+    if (!artifact) throw new Error(`candidate.json is missing ${file}.`);
+    return {
+      file,
+      sha256: artifact.sha256,
+      bytes: artifact.bytes,
+      application: "Koyori.app",
+    };
+  });
+}
+
+function validateArchiveTests(value, candidate) {
+  const expected = expectedArchiveTests(candidate);
+  if (!Array.isArray(value) || value.length !== expected.length) {
+    throw new Error("Both public archives must have desktop test evidence.");
+  }
+  value.forEach((entry, index) => {
+    requireExactKeys(entry, TESTED_ARCHIVE_KEYS, "archive test evidence entry");
+    if (TESTED_ARCHIVE_KEYS.some((key) => entry[key] !== expected[index][key])) {
+      throw new Error("Archive test evidence does not match candidate.json.");
+    }
+  });
+  return expected;
 }
 
 async function requireExactFiles(directory, expectedFiles) {
@@ -405,9 +610,13 @@ async function main() {
       commit: { type: "string" },
       version: { type: "string" },
       candidate: { type: "string" },
+      archiveTests: { type: "string" },
       directory: { type: "string" },
       local: { type: "string" },
       remote: { type: "string" },
+      repository: { type: "string" },
+      tag: { type: "string" },
+      plan: { type: "string" },
       publishedAt: { type: "string" },
       output: { type: "string" },
     },
@@ -424,6 +633,7 @@ async function main() {
       root,
       commit: requiredOption(values.commit, "commit"),
       candidatePath: resolve(requiredOption(values.candidate, "candidate")),
+      archiveTestsPath: resolve(requiredOption(values.archiveTests, "archiveTests")),
       outputPath: resolve(requiredOption(values.output, "output")),
     });
   } else if (command === "verify-publish") {
@@ -444,6 +654,17 @@ async function main() {
       localDirectory: resolve(requiredOption(values.local, "local")),
       remoteDirectory: resolve(requiredOption(values.remote, "remote")),
     });
+  } else if (command === "inspect-remote") {
+    const plan = await inspectRemoteRelease({
+      repository: requiredOption(values.repository, "repository"),
+      tag: requiredOption(values.tag, "tag"),
+      commit: requiredOption(values.commit, "commit"),
+      localDirectory: values.local ? resolve(values.local) : undefined,
+      remoteDirectory: values.remote ? resolve(values.remote) : undefined,
+      token: process.env.GH_TOKEN,
+    });
+    if (values.plan) await writeJsonAtomic(resolve(values.plan), plan);
+    if (values.output) await writeOutputs(values.output, { action: plan.action });
   } else if (command === "catalog") {
     await createPreviewCatalog({
       candidatePath: resolve(requiredOption(values.candidate, "candidate")),

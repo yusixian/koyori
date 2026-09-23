@@ -17,7 +17,12 @@ import { stringify as stringifyYaml } from "yaml";
 import { expectedPublicArtifactNames } from "./package-desktop-config.mjs";
 import {
   createPreviewCatalog,
+  inspectRemoteRelease,
+  planReleaseContinuation,
+  recordAcceptance,
+  verifyArchiveInputs,
   verifyPublishInput,
+  verifyRemoteAssetSubset,
   verifyRemoteAssets,
 } from "./release-preview.mjs";
 
@@ -94,7 +99,15 @@ async function fixture({ notarized = true } = {}) {
     acceptedAt: "2026-09-22T12:30:00.000Z",
     platform: "darwin",
     arch: "arm64",
-    packagedApplication: "mac-arm64/Koyori.app",
+    testedArchives: [dmgName, zipName].map((file) => {
+      const artifact = artifacts.find((item) => item.file === file);
+      return {
+        file,
+        sha256: artifact.sha256,
+        bytes: artifact.bytes,
+        application: "Koyori.app",
+      };
+    }),
     upgrade: { status: "not-applicable", reason: "first-public-release" },
   };
   await writeFile(join(directory, "acceptance.json"), `${JSON.stringify(acceptance, null, 2)}\n`);
@@ -124,6 +137,35 @@ test("verifies the exact candidate and creates the website catalog", async () =>
     `https://github.com/yusixian/koyori/releases/download/v${VERSION}/Koyori-${VERSION}-arm64.dmg`,
   );
   assert.deepEqual(JSON.parse(await readFile(catalogPath, "utf8")), catalog);
+});
+
+test("acceptance binds both tested archives to candidate bytes", async () => {
+  const setup = await fixture();
+  const testedArchives = await verifyArchiveInputs({
+    candidatePath: setup.candidatePath,
+    commit: COMMIT,
+  });
+  const evidencePath = join(setup.root, "archive-tests.json");
+  await writeFile(evidencePath, JSON.stringify({ testedArchives }));
+  const acceptance = await recordAcceptance({
+    root: setup.root,
+    candidatePath: setup.candidatePath,
+    archiveTestsPath: evidencePath,
+    outputPath: join(setup.root, "fresh-acceptance.json"),
+    commit: COMMIT,
+  });
+  assert.deepEqual(acceptance.testedArchives, testedArchives);
+  await writeFile(evidencePath, JSON.stringify({ testedArchives: testedArchives.slice(0, 1) }));
+  await assert.rejects(
+    recordAcceptance({
+      root: setup.root,
+      candidatePath: setup.candidatePath,
+      archiveTestsPath: evidencePath,
+      outputPath: join(setup.root, "invalid-acceptance.json"),
+      commit: COMMIT,
+    }),
+    /Both public archives/u,
+  );
 });
 
 test("accepts an unsigned manual preview without updater metadata", async () => {
@@ -229,6 +271,155 @@ test("compares every downloaded draft asset with the accepted input", async () =
   await assert.rejects(
     verifyRemoteAssets({ localDirectory: setup.directory, remoteDirectory: remote }),
     /downloaded Release asset does not match/u,
+  );
+});
+
+test("compares partial remote assets without permitting changed bytes", async () => {
+  const setup = await fixture();
+  const remote = join(setup.root, "remote");
+  await mkdir(remote);
+  await copyFile(join(setup.directory, "candidate.json"), join(remote, "candidate.json"));
+  await verifyRemoteAssetSubset({
+    localDirectory: setup.directory,
+    remoteDirectory: remote,
+    names: ["candidate.json"],
+  });
+  await writeFile(join(remote, "candidate.json"), "changed");
+  await assert.rejects(
+    verifyRemoteAssetSubset({
+      localDirectory: setup.directory,
+      remoteDirectory: remote,
+      names: ["candidate.json"],
+    }),
+    /does not match/u,
+  );
+});
+
+test("release continuation allows only matching drafts and immutable published prereleases", () => {
+  const tag = `v${VERSION}`;
+  const files = ["candidate.json", "acceptance.json"];
+  const base = { commit: COMMIT, tag, tagCommit: COMMIT, publishedTags: [], localFiles: files };
+  assert.deepEqual(planReleaseContinuation({ ...base, release: null, remoteFiles: [] }), {
+    action: "create",
+    missing: files,
+  });
+  const release = { tag_name: tag, target_commitish: COMMIT, prerelease: true, draft: true };
+  assert.deepEqual(planReleaseContinuation({ ...base, release, remoteFiles: ["candidate.json"] }), {
+    action: "upload",
+    missing: ["acceptance.json"],
+  });
+  assert.deepEqual(planReleaseContinuation({ ...base, release, remoteFiles: files }), {
+    action: "publish",
+    missing: [],
+  });
+  assert.equal(
+    planReleaseContinuation({
+      ...base,
+      release: { ...release, target_commitish: "main" },
+      remoteFiles: files,
+    }).action,
+    "publish",
+  );
+  assert.throws(
+    () =>
+      planReleaseContinuation({
+        ...base,
+        tagCommit: null,
+        release: { ...release, target_commitish: "main" },
+        remoteFiles: files,
+      }),
+    /different identity/u,
+  );
+  assert.deepEqual(
+    planReleaseContinuation({
+      ...base,
+      release: { ...release, draft: false },
+      publishedTags: [tag],
+      remoteFiles: files,
+    }),
+    { action: "published", missing: [] },
+  );
+  assert.throws(
+    () =>
+      planReleaseContinuation({ ...base, tagCommit: "b".repeat(40), release, remoteFiles: files }),
+    /different commit/u,
+  );
+  assert.throws(
+    () =>
+      planReleaseContinuation({
+        ...base,
+        release: { ...release, draft: false },
+        publishedTags: [tag],
+        remoteFiles: [],
+      }),
+    /missing accepted assets/u,
+  );
+  assert.throws(
+    () => planReleaseContinuation({ ...base, release, remoteFiles: ["other.json"] }),
+    /unexpected/u,
+  );
+  assert.throws(
+    () =>
+      planReleaseContinuation({ ...base, release, publishedTags: ["v0.0.1"], remoteFiles: files }),
+    /another published Release/u,
+  );
+});
+
+test("remote inspection finds a draft in the Release list and checks downloaded bytes", async () => {
+  const setup = await fixture();
+  const remoteDirectory = join(setup.root, "remote-by-api");
+  const tag = `v${VERSION}`;
+  const candidateBytes = await readFile(setup.candidatePath);
+  const release = {
+    tag_name: tag,
+    target_commitish: COMMIT,
+    prerelease: true,
+    draft: true,
+    assets: [{ id: 12, name: "candidate.json", state: "uploaded" }],
+  };
+  const request = async (url) => {
+    if (url.includes("releases?")) return Response.json([release]);
+    if (url.includes("git/ref/tags/")) return new Response(null, { status: 404 });
+    if (url.includes("releases/assets/12")) return new Response(candidateBytes);
+    throw new Error(`Unexpected test URL: ${url}`);
+  };
+  const plan = await inspectRemoteRelease({
+    repository: "owner/repo",
+    tag,
+    commit: COMMIT,
+    localDirectory: setup.directory,
+    remoteDirectory,
+    token: "synthetic-token",
+    request,
+  });
+  assert.equal(plan.action, "upload");
+  assert.equal(plan.missing.includes("candidate.json"), false);
+  await rm(remoteDirectory, { recursive: true });
+  await assert.rejects(
+    inspectRemoteRelease({
+      repository: "owner/repo",
+      tag,
+      commit: COMMIT,
+      localDirectory: setup.directory,
+      remoteDirectory,
+      token: "synthetic-token",
+      request: async (url) =>
+        url.includes("releases/assets/12") ? new Response("different") : request(url),
+    }),
+    /downloaded Release asset does not match/u,
+  );
+});
+
+test("remote inspection treats API permission failures as errors", async () => {
+  await assert.rejects(
+    inspectRemoteRelease({
+      repository: "owner/repo",
+      tag: `v${VERSION}`,
+      commit: COMMIT,
+      token: "synthetic-token",
+      request: async () => new Response(null, { status: 403 }),
+    }),
+    /HTTP 403/u,
   );
 });
 
