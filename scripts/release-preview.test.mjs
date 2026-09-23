@@ -38,7 +38,7 @@ afterEach(async () => {
   );
 });
 
-async function fixture({ notarized = true } = {}) {
+async function fixture({ notarized = true, developmentSigned = false } = {}) {
   const root = await mkdtemp(join(tmpdir(), "koyori-preview-release-"));
   temporaryDirectories.push(root);
   const directory = join(root, "release-input");
@@ -85,7 +85,7 @@ async function fixture({ notarized = true } = {}) {
     arch: "arm64",
     minimumSystemVersion: "13.0",
     distribution: notarized ? "preview-candidate" : "manual-preview-candidate",
-    signing: notarized ? "notarized" : "unsigned",
+    signing: notarized ? "notarized" : developmentSigned ? "signed" : "unsigned",
     notarized,
     artifacts,
   };
@@ -185,6 +185,52 @@ test("accepts an unsigned manual preview without updater metadata", async () => 
   });
   assert.equal(catalog.signing, "unsigned");
   assert.equal(catalog.installation, "manual");
+});
+
+test("accepts an Apple Development-signed manual preview without updater metadata", async () => {
+  const setup = await fixture({ notarized: false, developmentSigned: true });
+  const verified = await verifyPublishInput({
+    root: setup.root,
+    directory: setup.directory,
+    commit: COMMIT,
+    version: VERSION,
+  });
+  assert.equal(verified.notarized, false);
+  const catalog = await createPreviewCatalog({
+    candidatePath: setup.candidatePath,
+    publishedAt: "2026-09-22T13:00:00.000Z",
+    outputPath: join(setup.root, "catalog/preview-mac-arm64.json"),
+  });
+  assert.equal(catalog.signing, "signed");
+  assert.equal(catalog.installation, "manual");
+});
+
+test("local archive checks can inspect a dirty build without making it publishable", async () => {
+  const setup = await fixture({ notarized: false, developmentSigned: true });
+  await writeFile(setup.candidatePath, JSON.stringify({ ...setup.candidate, dirty: true }));
+  await assert.rejects(
+    verifyArchiveInputs({ candidatePath: setup.candidatePath, commit: COMMIT }),
+    /not a clean Apple Silicon preview candidate/u,
+  );
+  assert.equal(
+    (
+      await verifyArchiveInputs({
+        candidatePath: setup.candidatePath,
+        commit: COMMIT,
+        allowLocalDirty: true,
+      })
+    ).length,
+    2,
+  );
+  await assert.rejects(
+    verifyPublishInput({
+      root: setup.root,
+      directory: setup.directory,
+      commit: COMMIT,
+      version: VERSION,
+    }),
+    /not a clean Apple Silicon preview candidate/u,
+  );
 });
 
 test("rejects a local-only unsigned build from the publish path", async () => {

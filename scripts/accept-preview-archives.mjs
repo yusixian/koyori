@@ -10,6 +10,7 @@ const { values } = parseArgs({
     candidate: { type: "string" },
     commit: { type: "string" },
     output: { type: "string" },
+    "allow-local-dirty": { type: "boolean" },
   },
 });
 if (process.platform !== "darwin" || process.arch !== "arm64") {
@@ -19,7 +20,11 @@ if (!values.candidate || !values.commit || !values.output) {
   throw new Error("Expected --candidate, --commit and --output.");
 }
 const candidatePath = resolve(values.candidate);
-const testedArchives = await verifyArchiveInputs({ candidatePath, commit: values.commit });
+const testedArchives = await verifyArchiveInputs({
+  candidatePath,
+  commit: values.commit,
+  allowLocalDirty: values["allow-local-dirty"],
+});
 const temporary = await mkdtemp(join(tmpdir(), "koyori-archive-acceptance-"));
 
 try {
@@ -72,7 +77,11 @@ try {
     }
   }
   // Recheck the archive bytes after the tests before recording the accepted files.
-  await verifyArchiveInputs({ candidatePath, commit: values.commit });
+  await verifyArchiveInputs({
+    candidatePath,
+    commit: values.commit,
+    allowLocalDirty: values["allow-local-dirty"],
+  });
   await writeFile(resolve(values.output), `${JSON.stringify({ testedArchives }, null, 2)}\n`);
 } finally {
   await rm(temporary, { recursive: true, force: true });

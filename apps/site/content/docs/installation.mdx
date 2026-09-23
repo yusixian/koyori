@@ -5,7 +5,7 @@ description: Koyori Preview 的 macOS 安装、手动更新和签名状态。
 
 ## 当前状态
 
-首个 macOS Preview 正在准备安装检查，目前尚未开放下载。首发可采用明确标记的未签名手动安装包；签名和公证完成后再开放应用内更新。
+首个 macOS Preview 正在准备安装检查，目前尚未开放下载。首发可采用明确标记的 Apple Development 已签名、未公证手动安装包；Developer ID 签名和公证完成后再开放应用内更新。
 
 首版面向 macOS 13+ 的 Apple Silicon Mac。开放下载后，下载页会显示版本、系统要求、签名状态、文件大小、SHA-256 和 GitHub Release。
 
@@ -25,6 +25,6 @@ description: Koyori Preview 的 macOS 安装、手动更新和签名状态。
 
 ## Preview 限制
 
-首个 Preview 面向 macOS 13+ Apple Silicon，用于本机测试，不承诺 Intel 原生支持或跨平台安装。未签名版本会按实际状态标记，可能需要按 macOS 的提示手动允许打开；它不具备应用内自动更新。公开下载只在同一候选完成安装验收与产物校验后开放。
+首个 Preview 面向 macOS 13+ Apple Silicon，用于本机测试，不承诺 Intel 原生支持或跨平台安装。未公证版本会按实际签名状态标记，可能需要在 macOS“隐私与安全性”中手动允许打开；它不具备应用内自动更新。公开下载只在同一候选完成安装验收与产物校验后开放。
 
 每份公开清单都绑定版本、构建 commit、文件大小和 SHA-256。重新构建后的文件即使版本号相同，也不能沿用之前文件的校验结果。

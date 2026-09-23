@@ -16,6 +16,10 @@ export function isManualPreview(environment) {
   return environment.KOYORI_MANUAL_PREVIEW === "1";
 }
 
+export function isDevelopmentSignedPreview(environment) {
+  return environment.KOYORI_DEVELOPMENT_SIGNED_PREVIEW === "1";
+}
+
 export function assertAlphaVersion(version) {
   if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-alpha\.(0|[1-9]\d*)$/.test(version)) {
     throw new Error(
@@ -42,12 +46,35 @@ export function assertSignedReleaseRequest({ version, dirty, environment }) {
 export function assertManualPreviewRequest({ version, dirty, environment }) {
   assertAlphaVersion(version);
   if (dirty) throw new Error("Manual preview builds require a clean Git worktree.");
-  if (isSignedRelease(environment)) {
-    throw new Error("A preview cannot request both manual and signed distribution.");
+  if (isSignedRelease(environment) || isDevelopmentSignedPreview(environment)) {
+    throw new Error("A preview cannot request multiple distribution modes.");
   }
 }
 
-export function createDesktopBuilderConfig({ root, outputDirectory, version, signed }) {
+export function assertDevelopmentSignedPreviewRequest({ version, dirty, environment }) {
+  assertAlphaVersion(version);
+  if (dirty && environment.KOYORI_LOCAL_PREVIEW !== "1") {
+    throw new Error("Development-signed preview builds require a clean Git worktree.");
+  }
+  if (isSignedRelease(environment) || isManualPreview(environment)) {
+    throw new Error("A preview cannot request multiple distribution modes.");
+  }
+  if (!environment.CSC_LINK?.trim() && !environment.CSC_NAME?.trim()) {
+    throw new Error("Development-signed preview builds require CSC_LINK or CSC_NAME.");
+  }
+  if (environment.CSC_LINK?.trim() && !environment.CSC_KEY_PASSWORD?.trim()) {
+    throw new Error("Development-signed preview builds require CSC_KEY_PASSWORD with CSC_LINK.");
+  }
+}
+
+export function createDesktopBuilderConfig({
+  root,
+  outputDirectory,
+  version,
+  signed,
+  developmentSigned = false,
+  developmentIdentity,
+}) {
   const publish = signed
     ? [
         {
@@ -68,7 +95,7 @@ export function createDesktopBuilderConfig({ root, outputDirectory, version, sig
     files: ["out/**/*", "package.json"],
     extraResources: [{ from: "build/licenses", to: "licenses" }],
     asar: true,
-    forceCodeSigning: signed,
+    forceCodeSigning: signed || developmentSigned,
     publish,
     generateUpdatesFilesForAllChannels: false,
     // biome-ignore lint/suspicious/noTemplateCurlyInString: electron-builder expands these placeholders.
@@ -80,7 +107,12 @@ export function createDesktopBuilderConfig({ root, outputDirectory, version, sig
       type: "distribution",
       hardenedRuntime: signed,
       notarize: signed,
-      ...(signed ? {} : { identity: null }),
+      ...(developmentSigned ? { additionalArguments: ["--timestamp=none"] } : {}),
+      ...(signed
+        ? {}
+        : developmentSigned
+          ? { identity: developmentIdentity || undefined }
+          : { identity: null }),
     },
     // The app inside the image is signed and stapled. electron-builder recommends leaving the
     // DMG container itself unsigned because signing it can conflict with its built-in notarization flow.
@@ -93,6 +125,7 @@ export function createCandidateManifest({
   commit,
   dirty,
   signed,
+  developmentSigned = false,
   manualPreview = false,
   artifacts,
 }) {
@@ -105,10 +138,10 @@ export function createCandidateManifest({
     minimumSystemVersion: MAC_MINIMUM_SYSTEM_VERSION,
     distribution: signed
       ? "preview-candidate"
-      : manualPreview
+      : manualPreview || developmentSigned
         ? "manual-preview-candidate"
         : "local-candidate",
-    signing: signed ? "notarized" : "unsigned",
+    signing: signed ? "notarized" : developmentSigned ? "signed" : "unsigned",
     notarized: signed,
     artifacts,
   };
