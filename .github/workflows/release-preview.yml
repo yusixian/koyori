@@ -1,7 +1,16 @@
-name: Release signed preview
+name: Release preview
 
 on:
   workflow_dispatch:
+    inputs:
+      distribution:
+        description: Preview distribution method
+        required: true
+        default: manual
+        type: choice
+        options:
+          - manual
+          - signed
 
 permissions: {}
 
@@ -11,7 +20,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build and accept signed candidate
+    name: Build and accept candidate
     runs-on: macos-15
     timeout-minutes: 50
     environment: preview-release
@@ -22,6 +31,7 @@ jobs:
       version: ${{ steps.prepare.outputs.version }}
       tag: ${{ steps.prepare.outputs.tag }}
       notes: ${{ steps.prepare.outputs.notes }}
+      distribution: ${{ inputs.distribution }}
     steps:
       - name: Check out the dispatched commit
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -80,6 +90,7 @@ jobs:
           fi
 
       - name: Build signed and notarized candidate
+        if: inputs.distribution == 'signed'
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
@@ -93,6 +104,10 @@ jobs:
           node -e 'const fs = require("node:fs"); const value = process.env.APPLE_API_KEY_P8; if (!value) throw new Error("APPLE_API_KEY_P8 is missing."); fs.writeFileSync(process.env.APPLE_API_KEY, value, { mode: 0o600 });'
           unset APPLE_API_KEY_P8
           KOYORI_SIGNED_RELEASE=1 pnpm package:mac
+
+      - name: Build unsigned manual-install candidate
+        if: inputs.distribution == 'manual'
+        run: KOYORI_MANUAL_PREVIEW=1 pnpm package:mac
 
       - name: Accept the packaged candidate
         env:
@@ -196,8 +211,10 @@ jobs:
             "release-input/Koyori-$RELEASE_VERSION-arm64.dmg.blockmap"
             "release-input/Koyori-$RELEASE_VERSION-arm64.zip"
             "release-input/Koyori-$RELEASE_VERSION-arm64.zip.blockmap"
-            release-input/alpha-mac.yml
           )
+          if [ "${{ steps.verify.outputs.notarized }}" = "true" ]; then
+            assets+=(release-input/alpha-mac.yml)
+          fi
           gh release create "$RELEASE_TAG" "${assets[@]}" \
             --target "$GITHUB_SHA" \
             --draft \

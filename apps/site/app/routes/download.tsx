@@ -134,9 +134,11 @@ export default function DownloadPage() {
               <li>按 macOS 提示完成首次打开。</li>
             </ol>
           )}
-          <p>
-            应用会自动检查新版；下载和重启安装由你触发，普通退出不会安装更新。当前任务未结束时，应用会提示稍后再安装。
-          </p>
+          {releaseManifest.installation === "automatic" && (
+            <p>
+              应用会自动检查新版；下载和重启安装由你触发，普通退出不会安装更新。当前任务未结束时，应用会提示稍后再安装。
+            </p>
+          )}
           <p>
             下载前可先查看 <Link to="/docs/installation">安装说明</Link> 和{" "}
             <Link to="/changelog">更新记录</Link>。
@@ -151,7 +153,7 @@ export default function DownloadPage() {
       <section className="page-hero section-wrap compact-hero">
         <p className="eyebrow">Download</p>
         <h1>下载入口正在准备。</h1>
-        <p>首个 macOS Preview 正在准备。通过签名、公证和安装检查后，会在这里开放下载。</p>
+        <p>首个 macOS Preview 正在准备。完成安装与产物校验后，会按实际签名状态在这里开放下载。</p>
       </section>
 
       <section className="section-wrap release-panel" aria-labelledby="release-status">

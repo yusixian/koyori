@@ -1,0 +1,25 @@
+name: 功能建议
+description: 描述一个具体的自用流程或改进建议
+title: "idea: "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: 请使用合成示例，不要填写个人服务地址、会话内容或密钥。
+  - type: textarea
+    id: task
+    attributes:
+      label: 想完成的任务
+      description: 目前在哪一步卡住？
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: 希望看到的结果
+    validations:
+      required: true
+  - type: textarea
+    id: workaround
+    attributes:
+      label: 当前做法（可选）

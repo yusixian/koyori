@@ -12,6 +12,10 @@ export function isSignedRelease(environment) {
   return environment.KOYORI_SIGNED_RELEASE === "1";
 }
 
+export function isManualPreview(environment) {
+  return environment.KOYORI_MANUAL_PREVIEW === "1";
+}
+
 export function assertAlphaVersion(version) {
   if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-alpha\.(0|[1-9]\d*)$/.test(version)) {
     throw new Error(
@@ -32,6 +36,14 @@ export function assertSignedReleaseRequest({ version, dirty, environment }) {
   });
   if (missing.length > 0) {
     throw new Error(`Signed preview builds require: ${missing.join(", ")}.`);
+  }
+}
+
+export function assertManualPreviewRequest({ version, dirty, environment }) {
+  assertAlphaVersion(version);
+  if (dirty) throw new Error("Manual preview builds require a clean Git worktree.");
+  if (isSignedRelease(environment)) {
+    throw new Error("A preview cannot request both manual and signed distribution.");
   }
 }
 
@@ -76,7 +88,14 @@ export function createDesktopBuilderConfig({ root, outputDirectory, version, sig
   };
 }
 
-export function createCandidateManifest({ version, commit, dirty, signed, artifacts }) {
+export function createCandidateManifest({
+  version,
+  commit,
+  dirty,
+  signed,
+  manualPreview = false,
+  artifacts,
+}) {
   return {
     version,
     commit,
@@ -84,7 +103,11 @@ export function createCandidateManifest({ version, commit, dirty, signed, artifa
     platform: "darwin",
     arch: "arm64",
     minimumSystemVersion: MAC_MINIMUM_SYSTEM_VERSION,
-    distribution: signed ? "preview-candidate" : "local-candidate",
+    distribution: signed
+      ? "preview-candidate"
+      : manualPreview
+        ? "manual-preview-candidate"
+        : "local-candidate",
     signing: signed ? "notarized" : "unsigned",
     notarized: signed,
     artifacts,

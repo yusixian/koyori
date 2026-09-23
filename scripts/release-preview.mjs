@@ -70,7 +70,7 @@ export async function recordAcceptance({
   const version = requireString(packageJson.version, "root package version");
   const candidate = await readCandidate(candidatePath, { version, commit });
   await verifyCandidateArtifacts(dirname(candidatePath), candidate);
-  await verifyUpdateMetadata(dirname(candidatePath), candidate);
+  if (candidate.notarized) await verifyUpdateMetadata(dirname(candidatePath), candidate);
   const candidateSha256 = await sha256(candidatePath);
   const acceptance = {
     schemaVersion: 1,
@@ -105,11 +105,11 @@ export async function verifyPublishInput({ root, directory, commit, version }) {
   const expectedFiles = [
     "candidate.json",
     "acceptance.json",
-    ...expectedPublicArtifactNames(version, true),
+    ...expectedPublicArtifactNames(version, candidate.notarized),
   ];
   await requireExactFiles(directory, expectedFiles);
   await verifyCandidateArtifacts(directory, candidate);
-  await verifyUpdateMetadata(directory, candidate);
+  if (candidate.notarized) await verifyUpdateMetadata(directory, candidate);
 
   const acceptance = await readAcceptance(acceptancePath, { version, commit });
   const candidateSha256 = await sha256(candidatePath);
@@ -121,6 +121,7 @@ export async function verifyPublishInput({ root, directory, commit, version }) {
     tag: `v${version}`,
     notes: `docs/releases/v${version}.md`,
     files: expectedFiles,
+    notarized: candidate.notarized,
   };
 }
 
@@ -160,8 +161,8 @@ export async function createPreviewCatalog({ candidatePath, publishedAt, outputP
     platform: "darwin",
     arch: "arm64",
     minimumSystemVersion: candidate.minimumSystemVersion,
-    signing: "notarized",
-    installation: "automatic",
+    signing: candidate.signing,
+    installation: candidate.notarized ? "automatic" : "manual",
     releaseNotesUrl: `https://github.com/yusixian/koyori/releases/tag/v${candidate.version}`,
     download: {
       url: `https://github.com/yusixian/koyori/releases/download/v${candidate.version}/${dmgName}`,
@@ -186,21 +187,27 @@ async function readCandidate(path, expected = {}) {
   if (expected.commit !== undefined && commit !== expected.commit) {
     throw new Error("candidate.json comes from a different commit.");
   }
+  const notarized =
+    candidate.distribution === "preview-candidate" &&
+    candidate.signing === "notarized" &&
+    candidate.notarized === true;
+  const manual =
+    candidate.distribution === "manual-preview-candidate" &&
+    candidate.signing === "unsigned" &&
+    candidate.notarized === false;
   if (
     candidate.dirty !== false ||
     candidate.platform !== "darwin" ||
     candidate.arch !== "arm64" ||
     candidate.minimumSystemVersion !== MAC_MINIMUM_SYSTEM_VERSION ||
-    candidate.distribution !== "preview-candidate" ||
-    candidate.signing !== "notarized" ||
-    candidate.notarized !== true
+    (!notarized && !manual)
   ) {
-    throw new Error("candidate.json is not a clean, notarized Apple Silicon preview candidate.");
+    throw new Error("candidate.json is not a clean Apple Silicon preview candidate.");
   }
   if (!Array.isArray(candidate.artifacts)) {
     throw new Error("candidate.json artifacts must be an array.");
   }
-  const expectedNames = expectedPublicArtifactNames(version, true);
+  const expectedNames = expectedPublicArtifactNames(version, notarized);
   if (candidate.artifacts.length !== expectedNames.length) {
     throw new Error("candidate.json does not contain the exact public artifact set.");
   }
@@ -430,6 +437,7 @@ async function main() {
       version: verified.version,
       tag: verified.tag,
       notes: verified.notes,
+      notarized: String(verified.notarized),
     });
   } else if (command === "verify-remote") {
     await verifyRemoteAssets({

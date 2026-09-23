@@ -4,7 +4,7 @@
 
 ## 当前迭代
 
-当前优先准备 `0.1.0-alpha.1` 签名 Preview 与应用内更新：桌面加入检查、下载进度、取消、重试和安全重启安装；签名构建与发布入口正在收尾。macOS 证书及公证凭据未就绪，尚未发布下载清单或公开安装包；配置指南见 [macOS 签名与发布](release-signing.md)。
+当前推进 `0.1.0-alpha.1` 的 MVP 应用开发：Preview 更新与发布代码已进入功能分支，项目级 Skills 部署/撤销、本地操作卡和“我的服务”入口仍在开发。macOS 证书及公证凭据未就绪，首个公开候选可选择未签名的手动安装模式；尚未发布下载清单或公开安装包。配置指南见 [macOS 签名与发布](release-signing.md)。
 
 此前单 Skill 讨论已随 [PR #5](https://github.com/yusixian/koyori/pull/5) 合并，main `1b3a0e76974d21c7f091966755b7472ac819d831` 的 [CI 35712164007](https://github.com/yusixian/koyori/actions/runs/35712164007) 通过；该提交已于上轮在 Dokploy 核验部署，公开 HTTPS 的指南、下载、搜索等路由检查通过。下列旧版本记录保留为历史证据。
 

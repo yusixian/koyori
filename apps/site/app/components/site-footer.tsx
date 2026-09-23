@@ -9,6 +9,7 @@ export function SiteFooter() {
       </div>
       <nav aria-label="页脚导航">
         <Link to="/docs/security">安全与数据</Link>
+        <a href="https://github.com/yusixian/koyori/issues/new/choose">反馈与建议</a>
         <a href="https://github.com/yusixian/koyori">GitHub</a>
       </nav>
     </footer>

@@ -33,7 +33,7 @@ afterEach(async () => {
   );
 });
 
-async function fixture() {
+async function fixture({ notarized = true } = {}) {
   const root = await mkdtemp(join(tmpdir(), "koyori-preview-release-"));
   temporaryDirectories.push(root);
   const directory = join(root, "release-input");
@@ -42,7 +42,7 @@ async function fixture() {
   await writeFile(join(root, "package.json"), JSON.stringify({ version: VERSION }));
   await writeFile(join(root, `docs/releases/v${VERSION}.md`), "# Preview\n");
 
-  const artifactNames = expectedPublicArtifactNames(VERSION, true);
+  const artifactNames = expectedPublicArtifactNames(VERSION, notarized);
   const binaryNames = artifactNames.filter((name) => name !== "alpha-mac.yml");
   for (const name of binaryNames) await writeFile(join(directory, name), `fixture:${name}`);
   const zipName = `Koyori-${VERSION}-arm64.zip`;
@@ -60,7 +60,7 @@ async function fixture() {
     sha512: await digest(join(directory, zipName), "sha512", "base64"),
     releaseDate: "2026-09-22T12:00:00.000Z",
   };
-  await writeFile(join(directory, "alpha-mac.yml"), stringifyYaml(metadata));
+  if (notarized) await writeFile(join(directory, "alpha-mac.yml"), stringifyYaml(metadata));
   const artifacts = await Promise.all(
     artifactNames.map(async (file) => {
       const data = await readFile(join(directory, file));
@@ -79,9 +79,9 @@ async function fixture() {
     platform: "darwin",
     arch: "arm64",
     minimumSystemVersion: "13.0",
-    distribution: "preview-candidate",
-    signing: "notarized",
-    notarized: true,
+    distribution: notarized ? "preview-candidate" : "manual-preview-candidate",
+    signing: notarized ? "notarized" : "unsigned",
+    notarized,
     artifacts,
   };
   const candidatePath = join(directory, "candidate.json");
@@ -124,6 +124,40 @@ test("verifies the exact candidate and creates the website catalog", async () =>
     `https://github.com/yusixian/koyori/releases/download/v${VERSION}/Koyori-${VERSION}-arm64.dmg`,
   );
   assert.deepEqual(JSON.parse(await readFile(catalogPath, "utf8")), catalog);
+});
+
+test("accepts an unsigned manual preview without updater metadata", async () => {
+  const setup = await fixture({ notarized: false });
+  const verified = await verifyPublishInput({
+    root: setup.root,
+    directory: setup.directory,
+    commit: COMMIT,
+    version: VERSION,
+  });
+  assert.equal(verified.notarized, false);
+  assert.equal(verified.files.includes("alpha-mac.yml"), false);
+  const catalog = await createPreviewCatalog({
+    candidatePath: setup.candidatePath,
+    publishedAt: "2026-09-22T13:00:00.000Z",
+    outputPath: join(setup.root, "catalog/preview-mac-arm64.json"),
+  });
+  assert.equal(catalog.signing, "unsigned");
+  assert.equal(catalog.installation, "manual");
+});
+
+test("rejects a local-only unsigned build from the publish path", async () => {
+  const setup = await fixture({ notarized: false });
+  const candidate = { ...setup.candidate, distribution: "local-candidate" };
+  await writeFile(setup.candidatePath, JSON.stringify(candidate));
+  await assert.rejects(
+    verifyPublishInput({
+      root: setup.root,
+      directory: setup.directory,
+      commit: COMMIT,
+      version: VERSION,
+    }),
+    /not a clean Apple Silicon preview candidate/u,
+  );
 });
 
 test("rejects a candidate from another commit", async () => {

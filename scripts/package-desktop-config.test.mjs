@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   assertAlphaVersion,
+  assertManualPreviewRequest,
   assertSignedReleaseRequest,
   createCandidateManifest,
   createDesktopBuilderConfig,
   expectedPublicArtifactNames,
+  isManualPreview,
   isSignedRelease,
   MAC_MINIMUM_SYSTEM_VERSION,
   validateAlphaUpdateMetadata,
@@ -57,6 +59,36 @@ test("unsigned packaging stays local and cannot discover a signing identity", ()
       artifacts: [],
     },
   );
+});
+
+test("manual preview requires an explicit clean unsigned release request", () => {
+  assert.equal(isManualPreview({ KOYORI_MANUAL_PREVIEW: "1" }), true);
+  assert.doesNotThrow(() =>
+    assertManualPreviewRequest({
+      version: "0.1.0-alpha.1",
+      dirty: false,
+      environment: { KOYORI_MANUAL_PREVIEW: "1" },
+    }),
+  );
+  assert.throws(
+    () =>
+      assertManualPreviewRequest({
+        version: "0.1.0-alpha.1",
+        dirty: true,
+        environment: { KOYORI_MANUAL_PREVIEW: "1" },
+      }),
+    /clean Git worktree/u,
+  );
+  const candidate = createCandidateManifest({
+    version: "0.1.0-alpha.1",
+    commit: "1".repeat(40),
+    dirty: false,
+    signed: false,
+    manualPreview: true,
+    artifacts: [],
+  });
+  assert.equal(candidate.distribution, "manual-preview-candidate");
+  assert.equal(candidate.signing, "unsigned");
 });
 
 test("signed packaging uses the explicit alpha GitHub feed without publishing", () => {

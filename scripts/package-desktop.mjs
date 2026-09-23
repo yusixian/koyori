@@ -5,10 +5,12 @@ import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
 import {
+  assertManualPreviewRequest,
   assertSignedReleaseRequest,
   createCandidateManifest,
   createDesktopBuilderConfig,
   expectedPublicArtifactNames,
+  isManualPreview,
   isSignedRelease,
   MAC_MINIMUM_SYSTEM_VERSION,
   validateAlphaUpdateMetadata,
@@ -29,6 +31,7 @@ const status = execFileSync("git", ["status", "--porcelain", "--untracked-files=
 }).trim();
 const dirty = status.length > 0;
 const signed = isSignedRelease(process.env);
+const manualPreview = isManualPreview(process.env);
 if (signed) {
   assertSignedReleaseRequest({ version, dirty, environment: process.env });
   const apiKey = await stat(process.env.APPLE_API_KEY).catch(() => null);
@@ -36,6 +39,7 @@ if (signed) {
     throw new Error("APPLE_API_KEY must name a readable private-key file.");
   }
 }
+if (manualPreview) assertManualPreviewRequest({ version, dirty, environment: process.env });
 const out = resolve(root, "artifacts");
 const appUpdatePath = resolve(out, "mac-arm64/Koyori.app/Contents/Resources/app-update.yml");
 await mkdir(out, { recursive: true });
@@ -151,6 +155,7 @@ await writeFile(
       commit: sha,
       dirty,
       signed,
+      manualPreview,
       artifacts,
     }),
     null,
@@ -161,5 +166,7 @@ await rename(candidateTemporaryPath, candidatePath);
 console.log(
   signed
     ? "Signed and notarized preview candidate built and verified. No Release was published."
-    : "Local unsigned candidate built. No Release was published.",
+    : manualPreview
+      ? "Unsigned manual preview candidate built and verified. No Release was published."
+      : "Local unsigned candidate built. No Release was published.",
 );

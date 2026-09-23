@@ -8,13 +8,13 @@
 
 允许本仓库实现、测试、提交、push、PR 更新及合并；允许在用户指定 Dokploy 上配置并部署本文档站。用户后续明确授权首个可下载 Preview、macOS 签名/公证、应用内更新，以及 Apple 证书和本仓库 GitHub Secrets 配置。没有授权迁移/同步/上传真实个人 Skills、修改现有 Skills Manager 数据或改造私有 Bot。真实文件写入验证使用隔离合成目录；需要用户参与的登录/权限事项集中记录，继续其他可独立工作。
 
-## 当前推进：签名 Preview 与应用更新
+## 当前推进：MVP 应用开发与手动 Preview 准备
 
 Skills → Agent 讨论已随 PR #5 合并；main `1b3a0e76974d21c7f091966755b7472ac819d831` 的 CI 35712164007 通过，上轮已核验同一提交的 Dokploy 部署与 HTTPS 路由。
 
-本轮分支 `feat/preview-updates` 准备 `0.1.0-alpha.1`：应用内检查/下载/取消/重启安装，签名与公证构建，可信 main 发布入口，按实际 Release 生成下载清单。未配置凭据和发布真实资产前，网站继续显示未发布。配置步骤见 [macOS 签名与发布](release-signing.md)。
+分支 `feat/preview-updates` 已把 `0.1.0-alpha.1` 的更新界面、打包与发布清单代码固定为 `83c047f`；当前继续集成项目级 Skills 部署/撤销、本地操作卡和“我的服务”入口。未签名候选仅支持明确标注的手动安装，签名与公证暂缓。没有发布真实资产前，网站继续显示未发布；配置步骤见 [macOS 签名与发布](release-signing.md)。
 
-已确认的外部缺口：现有账号角色不能创建 Developer ID Application；已有 iOS Distribution 证书不能替代它。签名证书/对应私钥与公证团队 API 凭据未就绪，不宣称已签名、已发版或真实升级已通过。凭据和机器路径不记录在本公开文件。
+已确认的外部缺口：现有账号角色不能创建 Developer ID Application；已有 iOS Distribution 证书不能替代它。签名证书/对应私钥与公证团队 API 凭据未就绪，不宣称已签名、已发版或真实升级已通过。凭据和机器路径不记录在本公开文件。开发期间只做 lint、类型和简单检查；完整 E2E 留到最终候选。
 
 ## 产品契约
 

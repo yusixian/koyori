@@ -1,6 +1,6 @@
 # macOS Preview 签名与发布
 
-首版面向 macOS 13 及以上的 Apple Silicon Mac。根 `package.json` 是版本来源，首个签名候选为 `0.1.0-alpha.1`。本文描述配置流程，不代表证书、公证或公开发行已经完成。
+首版面向 macOS 13 及以上的 Apple Silicon Mac。根 `package.json` 是版本来源；签名候选的具体版本以后续发布提交为准。本文描述配置流程，不代表证书、公证或公开发行已经完成。
 
 ## Apple 凭据
 
@@ -24,16 +24,17 @@
 
 签名任务在临时 macOS runner 中运行。`.p8` 只在签名步骤写入权限受限的临时文件，任务结束后删除；公共 PR 检查不获得这些 Secrets。应用安装包不包含任何签名私钥或公证凭据。
 
-## 两种构建
+## 构建模式
 
 - `pnpm package:mac`：本地未签名候选，不包含更新源配置，不会发布。
+- 可信发布流水线选择 `manual` 时，以 `KOYORI_MANUAL_PREVIEW=1` 构建干净提交的未签名候选。它只支持下载后手动安装，不包含更新源配置；发布清单必须标明未签名。
 - 签名任务设置 `KOYORI_SIGNED_RELEASE=1` 后运行同一命令：要求干净工作树、alpha 版本和全部凭据；启用 Developer ID 签名、Hardened Runtime、公证及 app ticket 验证。缺少身份或公证失败就中止。
 
 签名候选同时生成 DMG、ZIP、blockmap 和 `alpha-mac.yml`。DMG 和 ZIP 内含已签名、公证的应用；DMG 容器本身不额外签名。`artifacts/candidate.json` 记录源码 commit、版本、架构和每份发行文件的摘要，不能仅凭生成了这个 JSON 就跳过安装验收。
 
 ## 发布与更新
 
-发布流水线只接受 `main` 上 CI 成功的不可变提交。先构建签名候选，验收同一份应用，再上传 draft Release 并回读校验资产。校验通过才公开 Release，最后生成供网站推广的发布清单。同版本 tag 或安装包不覆盖。
+发布流水线只接受 `main` 上 CI 成功的不可变提交。选择手动或签名模式后构建并验收同一份应用，再上传 draft Release 并回读校验资产。校验通过才公开 Release，最后生成供网站推广的发布清单。同版本 tag 或安装包不覆盖。手动模式没有应用内更新元数据，不宣称自动更新可用。
 
 应用使用 `electron-updater` 的 GitHub provider 与打包器生成的元数据。Preview 使用 alpha 渠道，稳定渠道不自动收到 Preview，禁止降级。启动后检查新版；用户选择下载、取消或重试，下载完成后点击“重启并安装”。安装先阻止新任务、等待当前操作安全结束并保存 Agent 数据。普通退出不触发安装。
 
