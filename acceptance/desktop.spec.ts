@@ -102,7 +102,7 @@ test("selected roots, preview, persistence and no source writes", async () => {
     let page = await app.firstWindow();
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
-    await expect(page.getByRole("heading", { name: "每一份能力，都有来处。" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "先找到你的 Skill" })).toBeVisible();
     expect(page.url()).toBe("koyori://app/index.html");
     const update = await page.evaluate(() => window.koyori.getUpdate());
     const product = JSON.parse(await readFile(resolve("package.json"), "utf8"));
@@ -112,8 +112,9 @@ test("selected roots, preview, persistence and no source writes", async () => {
       update.status === "unsupported" ? "更新仅在已配置更新源" : "尚未检查更新",
     );
     await page.getByRole("button", { name: "Skills", exact: true }).click();
-    await page.getByRole("button", { name: /先看看示例/ }).click();
+    await page.getByRole("button", { name: "先看个示例" }).click();
     await expect(page.getByText("示例模式 · 以下资源为合成示例，没有读取本机文件。")).toBeVisible();
+    await expect(page.getByLabel("Skill 详情")).toContainText("design-review");
     await page.getByRole("button", { name: "退出示例" }).click();
     await app.evaluate(
       ({ dialog }, directory) => {

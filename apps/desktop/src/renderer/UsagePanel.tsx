@@ -44,6 +44,7 @@ export function UsagePanel({ inventory, roots, onChange }: UsagePanelProps) {
   const [error, setError] = useState("");
   const [sourceRootId, setSourceRootId] = useState("");
   const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
+  const [showAllSkills, setShowAllSkills] = useState(false);
   const [ruleDraft, setRuleDraft] = useState<Record<keyof UsageRules, string>>({
     idleDays: "",
     lowUseThreshold: "",
@@ -233,6 +234,25 @@ export function UsagePanel({ inventory, roots, onChange }: UsagePanelProps) {
   const selectedUsage = selectedSkillId ? usageBySkillId.get(selectedSkillId) : undefined;
   const selectedSkill = selectedSkillId ? inventoryById.get(selectedSkillId) : undefined;
   const reviewDue = isWeeklyReviewDue(view?.lastReviewedAt ?? null);
+  const suggestedIds = new Set(view?.report.suggestions.flatMap((item) => item.skillIds) ?? []);
+  const visibleSkills = inventory.skills
+    .filter((skill) => {
+      if (showAllSkills) return true;
+      const record = usageBySkillId.get(skill.id);
+      const preference = view?.preferences[skill.id];
+      return Boolean(
+        record?.lastUsedAt ||
+          record?.evidence.length ||
+          preference?.keep ||
+          preference?.reviewAfter ||
+          suggestedIds.has(skill.id),
+      );
+    })
+    .sort((a, b) => {
+      const aUsed = usageBySkillId.get(a.id)?.lastUsedAt ?? "";
+      const bUsed = usageBySkillId.get(b.id)?.lastUsedAt ?? "";
+      return bUsed.localeCompare(aUsed) || a.name.localeCompare(b.name);
+    });
   const hasUsageContent = Boolean(
     view?.lastImportedAt || inventory.skills.length || view?.report.unattributed.length,
   );
@@ -492,12 +512,24 @@ export function UsagePanel({ inventory, roots, onChange }: UsagePanelProps) {
             <div className="usage-section-heading">
               <div>
                 <p className="usage-kicker">按资源查看</p>
-                <h3 id="skills-usage-heading">逐资源账本与偏好</h3>
+                <h3 id="skills-usage-heading">有记录或待复查</h3>
               </div>
-              <span>{inventory.skills.length} 份已扫描资源</span>
+              <button
+                type="button"
+                className="usage-text-button"
+                aria-expanded={showAllSkills}
+                onClick={() => setShowAllSkills((value) => !value)}
+              >
+                {showAllSkills ? "只看有记录的" : `查看全部 ${inventory.skills.length} 份`}
+              </button>
             </div>
             <div className="usage-skill-list">
-              {inventory.skills.map((skill) => {
+              {visibleSkills.length === 0 && (
+                <p className="usage-empty-line">
+                  还没有可查看的使用记录或复查项。未采集不等于没有使用；连接历史并导入后再看。
+                </p>
+              )}
+              {visibleSkills.map((skill) => {
                 const usage = usageBySkillId.get(skill.id);
                 const preference = view.preferences[skill.id];
                 const countableUsage = usage?.status === "observed" ? usage : undefined;
