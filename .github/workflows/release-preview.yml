@@ -62,6 +62,9 @@ jobs:
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Prepare Electron distribution
+        run: node scripts/prepare-desktop.mjs
+
       - name: Test release validation helper
         run: node --test scripts/release-preview.test.mjs
 
