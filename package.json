@@ -15,7 +15,7 @@
     "lint": "biome check apps/desktop/src packages/core/src apps/cli/src scripts acceptance",
     "format": "biome format --write apps/desktop/src packages/core/src apps/cli/src scripts acceptance",
     "typecheck": "tsc --noEmit && pnpm --filter @koyori/site typecheck",
-    "test": "vitest run && node --test scripts/*.test.mjs",
+    "test": "vitest run && node --test scripts/*.test.mjs apps/site/scripts/*.test.mjs",
     "build": "pnpm --filter @koyori/desktop build && pnpm --filter @koyori/site build",
     "package:mac": "pnpm --filter @koyori/desktop package:mac",
     "check:public": "node scripts/check-public.mjs",

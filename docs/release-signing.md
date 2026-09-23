@@ -36,6 +36,22 @@
 
 发布流水线只接受 `main` 上 CI 成功的不可变提交。选择手动或签名模式后构建并验收同一份应用，再上传 draft Release 并回读校验资产。校验通过才公开 Release，最后生成供网站推广的发布清单。同版本 tag 或安装包不覆盖。手动模式没有应用内更新元数据，不宣称自动更新可用。
 
+### 推广站点 Preview 清单
+
+Release workflow 上传的 `release-output/preview-mac-arm64.json` 只是 Actions artifact，不会进入站点构建。站点从仓库内 `apps/site/public/releases/preview-mac-arm64.json` 读取清单。公开 Release 后，在包含对应 `docs/releases/v<VERSION>.md` 的站点分支运行：
+
+```sh
+pnpm install --frozen-lockfile
+pnpm --filter @koyori/site promote:release --tag v<VERSION>
+pnpm --filter @koyori/site build
+git diff -- apps/site/public/releases/preview-mac-arm64.json
+git status --short -- apps/site/public/releases/preview-mac-arm64.json
+```
+
+命令使用当前 `gh` 登录态读取指定公开的 Preview Release、tag commit、`candidate.json`、`acceptance.json` 和实际 DMG。它校验候选记录、验收记录、DMG 大小与 SHA-256，以及核心清单格式后，才原子替换站点源文件。失败不改旧清单；修复外部原因后用同一 tag 重试，同一内容重复执行不会产生改动。同版本内容不同会报错，不覆盖已有记录。不要从 Actions artifact 手工复制到站点目录。
+
+将清单文件和对应发布说明合入站点构建所用分支，再部署站点。部署后核对公网 `/download/` 的版本、下载地址和 SHA-256，并实际验证该地址下载的 DMG 摘要；这一步未由 helper 或本地构建完成。若合入或部署失败，旧站点保持原状态，可重试站点交付，无需重发 Release。
+
 应用使用 `electron-updater` 的 GitHub provider 与打包器生成的元数据。Preview 使用 alpha 渠道，稳定渠道不自动收到 Preview，禁止降级。启动后检查新版；用户选择下载、取消或重试，下载完成后点击“重启并安装”。安装先阻止新任务、等待当前操作安全结束并保存 Agent 数据。普通退出不触发安装。
 
 首次发行没有上一公开版本，升级验收记为不适用。后续版本必须补充真实的签名包升级与数据保留证据；单元测试和未签名候选不能作为自动安装已验收的证明。

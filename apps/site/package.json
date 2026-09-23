@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "sync:release": "tsx scripts/sync-release.ts",
+    "promote:release": "node scripts/promote-release.mjs",
     "dev": "pnpm sync:release && react-router dev --port 5174 --strictPort",
     "build": "pnpm sync:release && react-router build",
     "typecheck": "pnpm sync:release && react-router typegen && tsc --noEmit"

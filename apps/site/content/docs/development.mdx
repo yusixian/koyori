@@ -33,3 +33,5 @@ pnpm --filter @koyori/site build
 ## 内容边界
 
 站点只发布 `apps/site/content/docs` 下明确加入的内容，以及从 `docs/releases/unreleased.md` 或对应版本的 `docs/releases/v<VERSION>.md` 同步生成的更新页。只有 `apps/site/public/releases/preview-mac-arm64.json` 经过核心清单校验时，下载页才显示公开安装包；不能仅因为仓库里有版本正文就宣称已经发布。不要将凭据、真实会话、个人路径或服务器信息放进公开内容与 fixture。
+
+公开 Preview Release 后，维护者可运行 `pnpm --filter @koyori/site promote:release --tag v<VERSION>`。命令从 GitHub Release 下载并核验实际 DMG，再更新仓库内的站点清单；还需将清单合入站点分支、部署并核对公网下载页与文件摘要。具体操作见 [macOS 签名与发布](https://github.com/yusixian/koyori/blob/main/docs/release-signing.md)。
