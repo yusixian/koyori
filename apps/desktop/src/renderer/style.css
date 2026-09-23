@@ -489,6 +489,34 @@ select {
 .button.primary:hover {
   background: #a7516e;
 }
+.skill-guide {
+  margin: 0 0 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  border: 1px solid #e7d5dc;
+  border-radius: 14px;
+  padding: 17px 20px;
+  background: linear-gradient(120deg, #fffaf9, #f6f8f3);
+  box-shadow: 0 8px 25px #76515d0a;
+}
+.skill-guide .eyebrow {
+  margin-bottom: 3px;
+}
+.skill-guide h2 {
+  color: #55414b;
+  font-size: 17px;
+}
+.skill-guide > div > p:last-child {
+  margin-top: 5px;
+  color: #76666e;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.skill-guide > button {
+  flex: 0 0 auto;
+}
 .text-button {
   background: none;
   border: 0;
@@ -611,6 +639,19 @@ select {
 .skill-row.selected {
   background: #fbf0f4;
 }
+.skill-list-more {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: #fffbfc;
+  padding: 14px 20px;
+  color: #945771;
+  font-size: 12px;
+  text-align: center;
+}
+.skill-list-more:hover {
+  background: #fbf0f4;
+}
 .skill-symbol {
   width: 39px;
   height: 42px;
@@ -698,6 +739,14 @@ select {
 .detail > p {
   font-size: 12px;
   color: #a18e98;
+}
+.detail .detail-use {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #f6f3ef;
+  color: #6b5b62;
+  line-height: 1.6;
 }
 .detail-actions {
   display: grid;
@@ -1060,6 +1109,11 @@ select {
   }
 }
 @media (max-width: 1050px) {
+  .skill-guide {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
   main {
     padding: 0 24px 22px;
   }
@@ -1121,7 +1175,7 @@ select {
   position: sticky;
   top: 0;
   z-index: 5;
-  margin: -8px 0 14px;
+  margin: 0 0 14px;
   padding: 8px 0;
   background: #faf7f5;
   border-bottom: 1px solid #efe4e8;

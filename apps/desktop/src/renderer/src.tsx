@@ -103,6 +103,7 @@ function App() {
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | ClientId>("all");
+  const [listLimit, setListLimit] = useState(20);
   const [client, setClient] = useState<ClientId>("claude-code");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -195,17 +196,22 @@ function App() {
     setDiscoveryIssues(view.discoveryIssues);
   }
   const current = example ? sample : inventory;
-  const skills = useMemo(
-    () =>
-      (current?.skills ?? []).filter(
+  const skills = useMemo(() => {
+    const usageById = new Map(usage?.report.skills.map((item) => [item.skillId, item]) ?? []);
+    return (current?.skills ?? [])
+      .filter(
         (item) =>
           (filter === "all" || item.client === filter) &&
           `${item.name} ${item.description} ${item.path}`
             .toLowerCase()
             .includes(query.toLowerCase()),
-      ),
-    [current, filter, query],
-  );
+      )
+      .sort((a, b) => {
+        const aUsed = usageById.get(a.id)?.lastUsedAt ?? "";
+        const bUsed = usageById.get(b.id)?.lastUsedAt ?? "";
+        return bUsed.localeCompare(aUsed) || a.name.localeCompare(b.name);
+      });
+  }, [current, filter, query, usage]);
   const detail = skills.find((item) => item.id === selected);
   async function prepareDiscussion(skillId: string) {
     if (example || pendingDiscussion || discussionBusyId) return;
@@ -227,6 +233,7 @@ function App() {
     setError("");
     setExample(false);
     setSelected(null);
+    setListLimit(20);
     try {
       setInventory(await window.koyori.scan());
     } catch {
@@ -271,6 +278,7 @@ function App() {
     setSelected(null);
     setQuery("");
     setFilter("all");
+    setListLimit(20);
   }
   function selectSkill(id: string) {
     if (!selected) listScrollRef.current = window.scrollY;
@@ -448,34 +456,6 @@ function App() {
         {page === "updates" && <UpdatePanel />}
         {page === "skills" ? (
           <>
-            <section className="page-heading">
-              <div>
-                <p className="eyebrow">
-                  {skillView === "inventory"
-                    ? "资源清单"
-                    : skillView === "usage"
-                      ? "使用与建议"
-                      : "同步与备份"}
-                </p>
-                <h1>
-                  {skillView === "inventory"
-                    ? "每一份能力，都有来处。"
-                    : skillView === "usage"
-                      ? "看清使用，再决定去留。"
-                      : "整理前，先看清影响。"}
-                </h1>
-                <p>
-                  {skillView === "inventory"
-                    ? "把 Skills 放在一起看清楚，再决定怎么整理。"
-                    : skillView === "usage"
-                      ? "结合本机使用记录，找出值得保留或复查的 Skills。"
-                      : "选择资源，预览变化，再同步或备份。"}
-                </p>
-              </div>
-              <div className="heading-mark">
-                <Layers3 size={29} />
-              </div>
-            </section>
             {!example && (
               <nav className="skill-views" aria-label="Skills 视图">
                 <button
@@ -501,15 +481,54 @@ function App() {
                 </button>
               </nav>
             )}
+            {skillView === "inventory" && !example && (
+              <section className="skill-guide" aria-label="Skills 入门">
+                <div>
+                  <p className="eyebrow">从这里开始</p>
+                  <h2>
+                    {current?.skills.length
+                      ? `已找到 ${current.skills.length} 份 Skill`
+                      : "先找到你的 Skill"}
+                  </h2>
+                  <p>Skill 是 Claude Code 或 Codex 的任务指南。先打开一份，看看它能帮你做什么。</p>
+                </div>
+                <button
+                  type="button"
+                  className="button primary"
+                  onClick={() => {
+                    if (current?.skills.length) {
+                      const first = skills[0] ?? current.skills[0];
+                      if (!skills.length) {
+                        setQuery("");
+                        setFilter("all");
+                      }
+                      if (first) selectSkill(first.id);
+                      requestAnimationFrame(() =>
+                        document.querySelector(".workspace")?.scrollIntoView({ block: "start" }),
+                      );
+                    } else {
+                      tryExample();
+                      if (sample.skills[0]) selectSkill(sample.skills[0].id);
+                    }
+                  }}
+                >
+                  {current?.skills.length ? "打开一份看看" : "先看个示例"}
+                  <ChevronRight size={15} />
+                </button>
+              </section>
+            )}
             {skillView === "inventory" && (
               <div className="toolbar">
                 <label className="search">
                   <Search size={17} />
                   <input
                     aria-label="搜索 Skills"
-                    placeholder="搜索名称、描述或路径…"
+                    placeholder="按名称或任务搜索…"
                     value={query}
-                    onChange={(event) => setQuery(event.target.value)}
+                    onChange={(event) => {
+                      setQuery(event.target.value);
+                      setListLimit(20);
+                    }}
                   />
                 </label>
                 <select
@@ -517,8 +536,10 @@ function App() {
                   value={filter}
                   onChange={(event) => {
                     const value = event.target.value;
-                    if (value === "all" || value === "claude-code" || value === "codex")
+                    if (value === "all" || value === "claude-code" || value === "codex") {
                       setFilter(value);
+                      setListLimit(20);
+                    }
                   }}
                 >
                   <option value="all">全部客户端</option>
@@ -732,11 +753,11 @@ function App() {
                     <span>
                       SKILLS <b>{skills.length}</b>
                     </span>
-                    <span>{example ? "合成示例" : `${roots.length} 个已连接来源`}</span>
+                    <span>{example ? "合成示例" : "最近用过的排在前面"}</span>
                   </div>
                   {skills.length ? (
                     <div className="skill-list">
-                      {skills.map((item) => (
+                      {skills.slice(0, listLimit).map((item) => (
                         <button
                           type="button"
                           key={item.id}
@@ -767,6 +788,15 @@ function App() {
                           <ChevronRight size={16} />
                         </button>
                       ))}
+                      {skills.length > listLimit && (
+                        <button
+                          type="button"
+                          className="skill-list-more"
+                          onClick={() => setListLimit((value) => value + 20)}
+                        >
+                          再看 20 项 · 还有 {skills.length - listLimit} 项
+                        </button>
+                      )}
                     </div>
                   ) : (
                     <div className="empty">
@@ -1056,10 +1086,13 @@ function Detail({
       </div>
       <h2>{skill.name}</h2>
       <p>{skill.description || "未提供描述"}</p>
+      <p className="detail-use">
+        想用它？请在 {names[skill.client]} 中描述相关任务。这里可以查看和整理这份指南。
+      </p>
       <div className="detail-actions">
         {discuss && (
           <button
-            className="button primary"
+            className="button"
             type="button"
             disabled={discussionBusy || Boolean(pendingDiscussionName)}
             onClick={discuss}
