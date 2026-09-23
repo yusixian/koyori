@@ -45,7 +45,7 @@ export default function DownloadPage() {
             当前公开版本为 v{releaseManifest.version}，面向 macOS{" "}
             {releaseManifest.minimumSystemVersion}+ Apple Silicon。
             {releaseManifest.installation === "automatic"
-              ? "可以在应用内检查、下载并在确认后重启安装。"
+              ? "安装本版后，可以在应用内检查、下载并在确认后重启安装后续版本。"
               : "下载后退出旧版本，再手动替换应用。"}
           </p>
         </section>
@@ -121,7 +121,9 @@ export default function DownloadPage() {
           <h2>{releaseManifest.installation === "automatic" ? "应用内更新" : "手动安装与更新"}</h2>
           {releaseManifest.installation === "automatic" ? (
             <ol>
-              <li>首次安装先下载 DMG，将 Koyori 拖入 Applications 后打开。</li>
+              <li>
+                首次安装或从手动更新版迁移时，先下载 DMG，将 Koyori 拖入 Applications 并替换旧版。
+              </li>
               <li>在侧栏展开“更新”，查看自动检查结果或点击“检查更新”。</li>
               <li>看到新版本后，点击下载并等待应用完成下载。</li>
               <li>确认重启安装；应用只会在你的操作后退出并替换为新版本。</li>
