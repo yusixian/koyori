@@ -96,8 +96,8 @@ export async function recordAcceptance({
   return acceptance;
 }
 
-export async function verifyArchiveInputs({ candidatePath, commit }) {
-  const candidate = await readCandidate(candidatePath, { commit });
+export async function verifyArchiveInputs({ candidatePath, commit, allowLocalDirty = false }) {
+  const candidate = await readCandidate(candidatePath, { commit, allowLocalDirty });
   await verifyCandidateArtifacts(dirname(candidatePath), candidate);
   if (candidate.notarized) await verifyUpdateMetadata(dirname(candidatePath), candidate);
   return expectedArchiveTests(candidate);
@@ -367,10 +367,10 @@ async function readCandidate(path, expected = {}) {
     candidate.notarized === true;
   const manual =
     candidate.distribution === "manual-preview-candidate" &&
-    candidate.signing === "unsigned" &&
+    (candidate.signing === "unsigned" || candidate.signing === "signed") &&
     candidate.notarized === false;
   if (
-    candidate.dirty !== false ||
+    (candidate.dirty !== false && !(expected.allowLocalDirty && candidate.dirty === true)) ||
     candidate.platform !== "darwin" ||
     candidate.arch !== "arm64" ||
     candidate.minimumSystemVersion !== MAC_MINIMUM_SYSTEM_VERSION ||

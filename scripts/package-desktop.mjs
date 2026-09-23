@@ -5,11 +5,13 @@ import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
 import {
+  assertDevelopmentSignedPreviewRequest,
   assertManualPreviewRequest,
   assertSignedReleaseRequest,
   createCandidateManifest,
   createDesktopBuilderConfig,
   expectedPublicArtifactNames,
+  isDevelopmentSignedPreview,
   isManualPreview,
   isSignedRelease,
   MAC_MINIMUM_SYSTEM_VERSION,
@@ -32,14 +34,19 @@ const status = execFileSync("git", ["status", "--porcelain", "--untracked-files=
 const dirty = status.length > 0;
 const signed = isSignedRelease(process.env);
 const manualPreview = isManualPreview(process.env);
+const developmentSigned = isDevelopmentSignedPreview(process.env);
 if (signed) {
   assertSignedReleaseRequest({ version, dirty, environment: process.env });
+  if (manualPreview || developmentSigned)
+    throw new Error("A preview cannot request multiple distribution modes.");
   const apiKey = await stat(process.env.APPLE_API_KEY).catch(() => null);
   if (!apiKey?.isFile()) {
     throw new Error("APPLE_API_KEY must name a readable private-key file.");
   }
 }
 if (manualPreview) assertManualPreviewRequest({ version, dirty, environment: process.env });
+if (developmentSigned)
+  assertDevelopmentSignedPreviewRequest({ version, dirty, environment: process.env });
 const out = resolve(root, "artifacts");
 const appUpdatePath = resolve(out, "mac-arm64/Koyori.app/Contents/Resources/app-update.yml");
 await mkdir(out, { recursive: true });
@@ -67,7 +74,14 @@ await build({
   projectDir: resolve(root, "apps/desktop"),
   targets: Platform.MAC.createTarget(["dmg", "zip"], Arch.arm64),
   publish: "never",
-  config: createDesktopBuilderConfig({ root, outputDirectory: out, version, signed }),
+  config: createDesktopBuilderConfig({
+    root,
+    outputDirectory: out,
+    version,
+    signed,
+    developmentSigned,
+    developmentIdentity: process.env.CSC_NAME,
+  }),
 });
 
 const appPath = resolve(out, "mac-arm64/Koyori.app");
@@ -110,14 +124,10 @@ for (const fileName of artifactNames) {
   });
 }
 
-if (signed) {
+if (signed || developmentSigned) {
   execFileSync("/usr/bin/codesign", ["--verify", "--deep", "--strict", "--verbose=2", appPath], {
     stdio: "inherit",
   });
-  execFileSync("/usr/sbin/spctl", ["--assess", "--type", "execute", "--verbose=4", appPath], {
-    stdio: "inherit",
-  });
-  execFileSync("/usr/bin/xcrun", ["stapler", "validate", appPath], { stdio: "inherit" });
   const signatureInspection = spawnSync(
     "/usr/bin/codesign",
     ["--display", "--verbose=4", appPath],
@@ -126,23 +136,37 @@ if (signed) {
   const signatureDetails = `${signatureInspection.stdout ?? ""}\n${signatureInspection.stderr ?? ""}`;
   if (
     signatureInspection.status !== 0 ||
-    !/^Authority=Developer ID Application:/m.test(signatureDetails) ||
-    !/^TeamIdentifier=(?!not set$)\S+$/m.test(signatureDetails) ||
-    !/flags=.*\(runtime\)/m.test(signatureDetails)
+    !/^TeamIdentifier=(?!not set$)\S+$/m.test(signatureDetails)
   ) {
-    throw new Error("The app is not signed with a hardened Developer ID Application identity.");
+    throw new Error("The app is missing a valid Apple team signature.");
   }
+  if (developmentSigned && !/^Authority=Apple Development:/m.test(signatureDetails)) {
+    throw new Error("The app is not signed with an Apple Development identity.");
+  }
+  if (signed) {
+    execFileSync("/usr/sbin/spctl", ["--assess", "--type", "execute", "--verbose=4", appPath], {
+      stdio: "inherit",
+    });
+    execFileSync("/usr/bin/xcrun", ["stapler", "validate", appPath], { stdio: "inherit" });
+    if (
+      !/^Authority=Developer ID Application:/m.test(signatureDetails) ||
+      !/flags=.*\(runtime\)/m.test(signatureDetails)
+    ) {
+      throw new Error("The app is not signed with a hardened Developer ID Application identity.");
+    }
 
-  validateAppUpdateMetadata(parseYaml(await readFile(appUpdatePath, "utf8")));
-  validateAlphaUpdateMetadata({
-    value: parseYaml(await readFile(resolve(out, "alpha-mac.yml"), "utf8")),
-    version,
-    artifacts,
-  });
-} else {
+    validateAppUpdateMetadata(parseYaml(await readFile(appUpdatePath, "utf8")));
+    validateAlphaUpdateMetadata({
+      value: parseYaml(await readFile(resolve(out, "alpha-mac.yml"), "utf8")),
+      version,
+      artifacts,
+    });
+  }
+}
+if (!signed) {
   const unexpectedUpdateConfig = await stat(appUpdatePath).catch(() => null);
   if (unexpectedUpdateConfig) {
-    throw new Error("Unsigned candidates must not contain app-update.yml.");
+    throw new Error("Manual-install candidates must not contain app-update.yml.");
   }
 }
 const candidatePath = resolve(out, "candidate.json");
@@ -155,6 +179,7 @@ await writeFile(
       commit: sha,
       dirty,
       signed,
+      developmentSigned,
       manualPreview,
       artifacts,
     }),
@@ -166,7 +191,9 @@ await rename(candidateTemporaryPath, candidatePath);
 console.log(
   signed
     ? "Signed and notarized preview candidate built and verified. No Release was published."
-    : manualPreview
-      ? "Unsigned manual preview candidate built and verified. No Release was published."
-      : "Local unsigned candidate built. No Release was published.",
+    : developmentSigned
+      ? "Apple Development-signed manual preview candidate built and verified. No Release was published."
+      : manualPreview
+        ? "Unsigned manual preview candidate built and verified. No Release was published."
+        : "Local unsigned candidate built. No Release was published.",
 );

@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   assertAlphaVersion,
+  assertDevelopmentSignedPreviewRequest,
   assertManualPreviewRequest,
   assertSignedReleaseRequest,
   createCandidateManifest,
   createDesktopBuilderConfig,
   expectedPublicArtifactNames,
+  isDevelopmentSignedPreview,
   isManualPreview,
   isSignedRelease,
   MAC_MINIMUM_SYSTEM_VERSION,
@@ -89,6 +91,50 @@ test("manual preview requires an explicit clean unsigned release request", () =>
   });
   assert.equal(candidate.distribution, "manual-preview-candidate");
   assert.equal(candidate.signing, "unsigned");
+});
+
+test("Apple Development preview requires a signing identity and stays manual", () => {
+  assert.equal(isDevelopmentSignedPreview({ KOYORI_DEVELOPMENT_SIGNED_PREVIEW: "1" }), true);
+  assert.doesNotThrow(() =>
+    assertDevelopmentSignedPreviewRequest({
+      version: "0.1.0-alpha.1",
+      dirty: false,
+      environment: { KOYORI_DEVELOPMENT_SIGNED_PREVIEW: "1", CSC_NAME: "Apple Development: Test" },
+    }),
+  );
+  assert.throws(
+    () =>
+      assertDevelopmentSignedPreviewRequest({
+        version: "0.1.0-alpha.1",
+        dirty: false,
+        environment: { KOYORI_DEVELOPMENT_SIGNED_PREVIEW: "1" },
+      }),
+    /CSC_LINK or CSC_NAME/u,
+  );
+  const config = createDesktopBuilderConfig({
+    root: "/repo",
+    outputDirectory: "/repo/artifacts",
+    version: "0.1.0-alpha.1",
+    signed: false,
+    developmentSigned: true,
+    developmentIdentity: "Apple Development: Test",
+  });
+  assert.equal(config.forceCodeSigning, true);
+  assert.equal(config.publish, null);
+  assert.equal(config.mac.notarize, false);
+  assert.deepEqual(config.mac.additionalArguments, ["--timestamp=none"]);
+  assert.equal(config.mac.identity, "Apple Development: Test");
+  const candidate = createCandidateManifest({
+    version: "0.1.0-alpha.1",
+    commit: "1".repeat(40),
+    dirty: false,
+    signed: false,
+    developmentSigned: true,
+    artifacts: [],
+  });
+  assert.equal(candidate.distribution, "manual-preview-candidate");
+  assert.equal(candidate.signing, "signed");
+  assert.equal(candidate.notarized, false);
 });
 
 test("signed packaging uses the explicit alpha GitHub feed without publishing", () => {

@@ -10,6 +10,7 @@ on:
         type: choice
         options:
           - manual
+          - development-signed
           - signed
 
 permissions: {}
@@ -100,6 +101,13 @@ jobs:
       - name: Build unsigned manual-install candidate
         if: inputs.distribution == 'manual'
         run: KOYORI_MANUAL_PREVIEW=1 pnpm package:mac
+
+      - name: Build Apple Development-signed manual-install candidate
+        if: inputs.distribution == 'development-signed'
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: KOYORI_DEVELOPMENT_SIGNED_PREVIEW=1 pnpm package:mac
 
       - name: Accept applications from both public archives
         run: |

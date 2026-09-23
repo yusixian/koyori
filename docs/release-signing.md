@@ -4,7 +4,7 @@
 
 ## Apple 凭据
 
-需要 **Developer ID Application** 证书及其私钥，导出为带密码的 `.p12`。`iPhone Distribution`、`Apple Development` 和 `Mac App Distribution` 都不能代替它来分发站外 macOS 应用。创建 Developer ID 证书需要账户持有人；拥有 App 管理角色不代表拥有此权限。
+要让站外下载的应用通过通常的 Gatekeeper 检查，需要 **Developer ID Application** 证书及其私钥，导出为带密码的 `.p12`。`Apple Development` 只用于开发测试，可制作明确标记为已签名、未公证的手动安装 Preview；用户可能仍需在系统设置中手动允许打开。创建 Developer ID 证书需要账户持有人；拥有 App 管理角色不代表拥有此权限。
 
 可以由构建维护者在本机生成私钥和 CSR，将 **CSR 公钥申请文件**交给账户持有人。持有人在 Apple Developer 的 Certificates 页面选择 Developer ID Application，上传 CSR 后返回 `.cer`。私钥留在生成 CSR 的机器，将 `.cer` 与对应私钥组合导出 `.p12`。不要仅下载证书公钥后误认为拥有签名私钥，也不要撤销其他应用正在使用的证书。
 
@@ -16,7 +16,7 @@
 
 | Secret | 内容 |
 | --- | --- |
-| `CSC_LINK` | Developer ID Application `.p12` 的 Base64 内容 |
+| `CSC_LINK` | 所选模式对应签名证书 `.p12` 的 Base64 内容 |
 | `CSC_KEY_PASSWORD` | `.p12` 密码 |
 | `APPLE_API_KEY_P8` | 公证团队 API 密钥 `.p8` 原文 |
 | `APPLE_API_KEY_ID` | API Key ID |
@@ -28,9 +28,12 @@
 
 - `pnpm package:mac`：本地未签名候选，不包含更新源配置，不会发布。
 - 可信发布流水线选择 `manual` 时，以 `KOYORI_MANUAL_PREVIEW=1` 构建干净提交的未签名候选。它只支持下载后手动安装，不包含更新源配置；发布清单必须标明未签名。
+- 选择 `development-signed` 时，以 `KOYORI_DEVELOPMENT_SIGNED_PREVIEW=1` 和 Apple Development `.p12` 构建干净提交的已签名候选。本机也可用 `CSC_NAME` 指定钥匙串中的 Apple Development 身份；试构建可加 `KOYORI_LOCAL_PREVIEW=1`，其 dirty 状态会写入候选记录，不能通过公开发布校验。构建会验证证书类型和 Team ID；产物未公证，只支持手动安装，不包含应用内更新源配置。下载者可能需要通过 macOS“隐私与安全性”手动允许打开。
+- 开发签名不请求在线时间戳；证书过期后不要假定旧包仍可正常验证，发布页应保持 Preview 提示并及时换证构建新版本。
+- 本机试构建的两份压缩包可用 `node scripts/accept-preview-archives.mjs --candidate artifacts/candidate.json --commit "$(git rev-parse HEAD)" --output artifacts/archive-tests-local.json --allow-local-dirty` 运行安装与启动验收；此标志只用于本机验收，不能生成公开发行的 acceptance 记录。
 - 签名任务设置 `KOYORI_SIGNED_RELEASE=1` 后运行同一命令：要求干净工作树、alpha 版本和全部凭据；启用 Developer ID 签名、Hardened Runtime、公证及 app ticket 验证。缺少身份或公证失败就中止。
 
-签名候选同时生成 DMG、ZIP、blockmap 和 `alpha-mac.yml`。DMG 和 ZIP 内含已签名、公证的应用；DMG 容器本身不额外签名。`artifacts/candidate.json` 记录源码 commit、版本、架构和每份发行文件的摘要，不能仅凭生成了这个 JSON 就跳过安装验收。
+Developer ID 公证候选同时生成 DMG、ZIP、blockmap 和 `alpha-mac.yml`。Apple Development 候选不生成更新元数据。DMG 容器本身不额外签名。`artifacts/candidate.json` 记录源码 commit、版本、架构、签名状态和每份发行文件的摘要，不能仅凭生成了这个 JSON 就跳过安装验收。
 
 ## 发布与更新
 
