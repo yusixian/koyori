@@ -50,13 +50,11 @@ export default function HomePage() {
               : `开发候选 ${productVersion} · 尚未发布安装包`}
           </p>
         </div>
-        <div className="hero-art" aria-label="Koyori 品牌角色">
-          <div className="thread-line thread-line-one" />
-          <div className="thread-line thread-line-two" />
+        <div className="hero-art">
           <div className="logo-frame">
             <img src={logoUrl} alt="白粉短发、绿眼睛的 Koyori Q 版角色" />
           </div>
-          <p>糸连接散落的能力，葉记录持续生长。</p>
+          <p>把散落的能力，轻轻连在一起。</p>
         </div>
       </section>
 

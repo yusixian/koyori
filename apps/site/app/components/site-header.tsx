@@ -1,11 +1,11 @@
 import { Link, NavLink } from "react-router";
 import logoUrl from "../../../../brand/logo.png";
+import { SiteSearch } from "./site-search";
 
 const links = [
   { href: "/docs", label: "文档" },
   { href: "/download", label: "下载" },
   { href: "/changelog", label: "更新" },
-  { href: "/search", label: "查找" },
 ];
 
 function NavigationLinks({ mobile = false }: { mobile?: boolean }) {
@@ -32,19 +32,22 @@ export function SiteHeader() {
             <small>こより</small>
           </span>
         </Link>
-        <nav className="desktop-nav" aria-label="主导航">
-          <NavigationLinks />
-        </nav>
-        <details className="mobile-menu">
-          <summary aria-label="打开导航">
-            <span />
-            <span />
-            <span />
-          </summary>
-          <nav aria-label="移动导航">
-            <NavigationLinks mobile />
+        <div className="header-actions">
+          <nav className="desktop-nav" aria-label="主导航">
+            <NavigationLinks />
           </nav>
-        </details>
+          <SiteSearch className="header-search-trigger" />
+          <details className="mobile-menu">
+            <summary aria-label="打开导航">
+              <span />
+              <span />
+              <span />
+            </summary>
+            <nav aria-label="移动导航">
+              <NavigationLinks mobile />
+            </nav>
+          </details>
+        </div>
       </div>
     </header>
   );
