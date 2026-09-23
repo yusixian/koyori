@@ -179,19 +179,14 @@ export async function createUsageController(deps: Dependencies) {
       throw new Error("Invalid preference card");
     const pending = preferenceCards.get(cardId);
     if (!pending) throw new Error("Preference card is no longer available");
-    const currentFingerprint = await resourceFingerprint(pending.card.skillId).catch(
-      (error: unknown) => {
-        preferenceCards.delete(cardId);
-        throw error;
-      },
-    );
-    return mutate(() => {
+    return mutate(async () => {
       if (preferenceCards.get(cardId) !== pending)
         throw new Error("Preference card is no longer available");
       preferenceCards.delete(cardId);
       const { card, fingerprint } = pending;
       if (Date.now() >= Date.parse(card.expiresAt))
         throw new Error("Preference card expired; prepare it again");
+      const currentFingerprint = await resourceFingerprint(card.skillId);
       if (currentFingerprint !== fingerprint)
         throw new Error("Resource changed; prepare the preference card again");
       connectedSkill(card.skillId);
@@ -231,11 +226,11 @@ export async function createUsageController(deps: Dependencies) {
   function requireIdle() {
     if (busy || deps.resourceBusy()) throw new Error("An operation is in progress");
   }
-  async function mutate(update: () => UsageState, days: 30 | 90) {
+  async function mutate(update: () => UsageState | Promise<UsageState>, days: 30 | 90) {
     requireIdle();
     busy = true;
     try {
-      await persist(update());
+      await persist(await update());
       return view(days);
     } finally {
       busy = false;
