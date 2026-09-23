@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -6,6 +7,8 @@ import { createGitBackupStore } from "../../../../packages/core/src/git-backup";
 import { createAgentController } from "./agent-controller";
 import { createManagementController } from "./management-controller";
 import { createRemoteBackupController } from "./remote-backup-controller";
+import { createServicesController } from "./services-controller";
+import { createUpdateController, prepareUpdateInstallation } from "./update-controller";
 import { createUsageController } from "./usage-controller";
 import { createWorkspaceController } from "./workspace-controller";
 
@@ -22,8 +25,10 @@ let usage: Awaited<ReturnType<typeof createUsageController>> | undefined;
 let management: Awaited<ReturnType<typeof createManagementController>> | undefined;
 let remoteBackup: Awaited<ReturnType<typeof createRemoteBackupController>> | undefined;
 let agent: Awaited<ReturnType<typeof createAgentController>> | undefined;
+let updater: ReturnType<typeof createUpdateController> | undefined;
 let agentShutdown: Promise<void> | undefined;
 let agentStopped = false;
+let installationGate = false;
 let refreshTimer: ReturnType<typeof setInterval> | undefined;
 let stopped = false;
 function changed() {
@@ -32,9 +37,13 @@ function changed() {
 function agentChanged() {
   if (window && !window.isDestroyed()) window.webContents.send("agent:changed");
 }
+function updateChanged() {
+  if (window && !window.isDestroyed()) window.webContents.send("update:changed");
+}
 async function refresh() {
   if (
     stopped ||
+    installationGate ||
     workspace?.isBusy() ||
     usage?.isBusy() ||
     management?.isBusy() ||
@@ -43,14 +52,14 @@ async function refresh() {
     return;
   try {
     await workspace?.refresh();
-    if (!stopped) await usage?.refreshAutomatic();
-    if (!stopped) await remoteBackup?.tick();
+    if (!stopped && !installationGate) await usage?.refreshAutomatic();
+    if (!stopped && !installationGate) await remoteBackup?.tick();
   } catch {
     // Each controller retains a user-visible failure while preserving previous data.
     changed();
   }
 }
-function trusted(event: Electron.IpcMainInvokeEvent) {
+function trustedWindow(event: Electron.IpcMainInvokeEvent) {
   if (
     !window ||
     event.sender !== window.webContents ||
@@ -67,6 +76,36 @@ function trusted(event: Electron.IpcMainInvokeEvent) {
     throw new Error("Unauthorized origin");
   }
 }
+function trusted(event: Electron.IpcMainInvokeEvent) {
+  trustedWindow(event);
+  if (installationGate) throw new Error("正在准备安装更新，暂时不能开始新操作。");
+}
+async function prepareUpdateInstall() {
+  return prepareUpdateInstallation({
+    enter: () => {
+      if (installationGate) return false;
+      installationGate = true;
+      return true;
+    },
+    leave: () => {
+      installationGate = false;
+    },
+    isBusy: () =>
+      Boolean(
+        workspace?.isBusy() ||
+          usage?.isBusy() ||
+          management?.isBusy() ||
+          remoteBackup?.isBusy() ||
+          agent?.isBusy(),
+      ),
+    stopAgent: async () => {
+      await agent?.stop();
+    },
+    markAgentStopped: () => {
+      agentStopped = true;
+    },
+  });
+}
 function registerIpc() {
   ipcMain.handle("project:open", async (event) => {
     trusted(event);
@@ -74,7 +113,9 @@ function registerIpc() {
   });
 }
 function createWindow() {
+  const hiddenForAcceptance = app.commandLine.hasSwitch("koyori-acceptance-hidden");
   window = new BrowserWindow({
+    show: !hiddenForAcceptance,
     width: 1240,
     height: 820,
     minWidth: 920,
@@ -112,12 +153,33 @@ else {
   void app
     .whenReady()
     .then(async () => {
+      if (process.platform === "darwin" && app.commandLine.hasSwitch("koyori-acceptance-hidden")) {
+        app.dock?.hide();
+      }
       const dataDir = app.getPath("userData");
       try {
+        const updatesEnabled =
+          app.isPackaged &&
+          process.platform === "darwin" &&
+          process.arch === "arm64" &&
+          existsSync(join(process.resourcesPath, "app-update.yml"));
+        updater = createUpdateController({
+          currentVersion: __APP_VERSION__,
+          enabled: updatesEnabled,
+          automatic: updatesEnabled && !app.commandLine.hasSwitch("disable-auto-update-check"),
+          trusted: trustedWindow,
+          changed: updateChanged,
+          prepareInstall: prepareUpdateInstall,
+        });
         agent = await createAgentController({
           path: join(dataDir, "agent.json"),
           trusted,
           changed: agentChanged,
+        });
+        await createServicesController({
+          path: join(dataDir, "services.json"),
+          trusted,
+          openExternal: (url) => shell.openExternal(url),
         });
         workspace = await createWorkspaceController({
           path: join(dataDir, "sources.json"),
@@ -149,6 +211,7 @@ else {
           transferRoots: [join(dataDir, "remote-backup", "exports"), join(dataDir, "git-backup")],
           getRoots: () => workspace?.getRoots() ?? [],
           getTargets: () => workspace?.getTargets() ?? [],
+          getProjects: () => workspace?.getProjects() ?? [],
           getInventory: () => workspace?.getInventory() ?? null,
           resourceBusy: () =>
             Boolean(workspace?.isBusy() || usage?.isBusy() || remoteBackup?.isBusy()),
@@ -200,6 +263,7 @@ else {
       });
       registerIpc();
       createWindow();
+      updater.start();
       void refresh();
       refreshTimer = setInterval(() => {
         void refresh();
@@ -218,6 +282,7 @@ else {
   });
   app.on("before-quit", (event) => {
     stopped = true;
+    updater?.stop();
     remoteBackup?.stop();
     clearInterval(refreshTimer);
     workspace?.cancel();

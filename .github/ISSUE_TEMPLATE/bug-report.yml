@@ -1,0 +1,48 @@
+name: 问题反馈
+description: 报告可复现的 Koyori 问题
+title: "bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请只填写复现问题所需的信息。不要上传真实 Skill 正文、会话、个人路径、服务地址、密钥或原始日志。安全漏洞请使用仓库的私密报告入口。
+  - type: input
+    id: version
+    attributes:
+      label: Koyori 版本
+      description: 可从应用侧栏或下载页查看；源码构建请注明提交 SHA。
+      placeholder: 0.1.0-alpha.1 / commit SHA
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: 系统与架构
+      placeholder: macOS 15 / Apple Silicon
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 使用合成名称和路径描述操作。
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期结果
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际结果
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: 其他线索（可选）
+      description: 只附脱敏后的错误提示；不需要原始日志或个人数据。

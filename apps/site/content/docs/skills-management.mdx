@@ -28,6 +28,16 @@ Codex 系统目录 `/etc/codex/skills` 只作为只读来源。项目目录也�
 
 Claude Code 的 `allowed-tools`、`context` 等专用 frontmatter 会显示兼容性提示。提示表示需要人工核对目标客户端行为，不代表 Koyori 已经转换或验证这些字段。
 
+## 部署到已登记项目
+
+在资源清单中先登记项目，再选中一项 Skill，打开“同步与备份”里的“部署到项目”。选择该项目的 Claude Code 或 Codex 目标，预览来源、目标、文件数和兼容性提示，确认后才会复制完整目录。已有同名目标即使内容相同也不会被 Koyori 接管或替换。一次只部署一项，来源保持原样。
+
+“受管项目副本”列出 Koyori 登记的部署及其状态。项目目标的真实路径必须位于登记项目内；项目本身可以是目录链接，但项目内部指向外部的目录链接会阻止部署与撤销。撤销前会重新检查目标内容；如果文件被外部修改、目标已断开或项目不再登记，撤销会停止。成功撤销会把该副本原子移动到同一项目 Skills 目录内的隐藏 `.koyori-recovery-*` 恢复目录，保留操作记录，不删除来源。该目录不计入 Skills 清单，也不要当作缓存清理。
+
+部署与撤销会在文件动作前记录过渡状态。中断后重新启动，Koyori 只在目标及恢复目录的身份和内容均符合记录时完成或回退状态；无法确认时显示“需要人工核对”、目标及恢复位置，不会自动接管外部改动。
+
+**撤销项目副本不等于隐藏全局 Skill。** 如果来源仍在客户端扫描的用户级或共享目录，它可能继续可见；Koyori 不据此推断客户端会话中的实际加载状态。CLI 的 `sync` 不建立受管项目部署记录；请使用下面的 `project-deploy` 来建立可撤销的受管副本。
+
 ## 本地快照与恢复
 
 “备份所选 Skills”会把选中 Skill 的完整目录保存在 Koyori 应用数据中。替换已有目标前也会自动创建写前快照。快照与原 Skills 分开保存；它们是恢复材料，不是可随意清理的缓存。
@@ -74,6 +84,28 @@ pnpm koyori sync \
 
 `sync` 和 `restore` 第一次只输出计划和 revision。检查 JSON 后，以同样参数追加 `--apply <revision>`；Koyori 会重新生成计划，文件或选项变化会使旧 revision 失效。替换现有不同内容时，还需在预览和执行两次命令中都加入 `--replace`。
 
+项目级部署同样先预览，且需要显式指定项目、来源目录、来源与目标客户端、授权根和本地数据目录。目标目录由项目与目标客户端确定，Codex 使用 `<项目>/.agents/skills/<Skill 目录名>`，Claude Code 使用 `<项目>/.claude/skills/<Skill 目录名>`：
+
+```sh
+pnpm koyori project-deploy \
+  --project ./my-project --source ./claude-skills/example \
+  --from claude-code --to codex \
+  --root ./claude-skills --root ./my-project/.agents/skills \
+  --store ./koyori-data
+```
+
+核对输出的 `plan`（尤其是 `targetPath`、`conflict` 和兼容性提示）后，以完全相同的参数追加 `--apply <revision>`。CLI 会在新进程重新生成计划并比较稳定摘要，再调用核心执行；计划 ID 本身不能跨进程使用。已有目标即使内容相同也不能接管，项目部署没有 `--replace`。部署成功的 JSON 包含 `operation` 与带 ID 的 `deployment`；`project-deployments --store ./koyori-data` 可列出记录。
+
+撤销使用登记的部署 ID、同一个 `--store`、明确的项目和覆盖该项目 Skills 目录的授权根：
+
+```sh
+pnpm koyori project-revoke \
+  --project ./my-project --deployment <deployment-id> \
+  --root ./my-project/.agents/skills --store ./koyori-data
+```
+
+先核对撤销计划，再以同参数追加 `--apply <revision>`。目标被外部修改时计划会显示冲突，撤销不会执行；成功后输出的 `deployment.recoveryPath` 是保留的副本位置。CLI 用显式项目路径授权本次操作，不会自动替你在桌面端登记项目。若需桌面端查看同一批部署记录，使用桌面端的数据目录作为 `--store`，并在桌面端登记该项目。
+
 ```sh
 pnpm koyori backup \
   --source ./claude-skills/example \
@@ -89,4 +121,4 @@ pnpm koyori restore \
   --store ./koyori-data
 ```
 
-CLI 的 `backup` 当前只创建本地快照。`--root` 是本次进程可以读取或写入的目录边界；它不会授权边界外的链接目标。退出码 `0` 表示计划可执行或执行成功，`1` 表示冲突或操作失败，`2` 表示参数错误。
+CLI 的 `backup` 当前只创建本地快照。`--root` 是本次进程可以读取或写入的目录边界；它不会授权边界外的链接目标。退出码 `0` 表示计划可执行或执行成功，`1` 表示冲突或操作失败，`2` 表示参数错误或预览后内容与参数变化。计划、操作及错误均以 JSON 输出。

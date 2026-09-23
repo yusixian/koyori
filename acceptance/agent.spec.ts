@@ -48,6 +48,8 @@ test("agent conversation streams, cancels, persists and isolates connections", a
   const args = [
     ...(process.env.KOYORI_EXECUTABLE ? [] : [resolve("apps/desktop/out/main/index.js")]),
     `--user-data-dir=${userData}`,
+    "--disable-auto-update-check",
+    "--koyori-acceptance-hidden",
   ];
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) {

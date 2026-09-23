@@ -78,7 +78,7 @@ export interface PlanConflict {
   message: string;
 }
 
-export type SyncAction = "copy" | "replace" | "skip" | "conflict";
+export type SyncAction = "copy" | "replace" | "skip" | "conflict" | "revoke";
 
 export interface SyncPlanInput {
   source: string;
@@ -200,6 +200,54 @@ export interface RestorePlan {
 
 export type ManagementPlan = SyncPlan | RestorePlan;
 
+export interface ProjectDeployment {
+  id: string;
+  status: "deploying" | "active" | "revoking" | "revoked" | "needs-review";
+  projectPath: string;
+  targetRoot: string;
+  targetClient: ClientId;
+  sourcePath: string;
+  targetPath: string;
+  installedRevision?: DirectoryRevision & { kind: "directory" };
+  plannedManifestHash?: string;
+  plannedFiles?: number;
+  plannedBytes?: number;
+  movedIdentity?: { dev: number; ino: number };
+  stagePath?: string;
+  reviewReason?: string;
+  createdAt: string;
+  revokedAt?: string;
+  recoveryPath?: string;
+}
+
+export interface ProjectDeploymentPlan {
+  id: string;
+  kind: "project-deploy" | "project-revoke";
+  expiresAt: string;
+  executable: boolean;
+  projectPath: string;
+  targetRoot: string;
+  targetClient: ClientId;
+  targetPath: string;
+  sourcePath?: string;
+  deploymentId?: string;
+  sourceRevision?: DirectoryRevision;
+  targetRevision: DirectoryRevision;
+  files: number;
+  bytes: number;
+  conflict?: string;
+  compatibilityWarnings: CompatibilityWarning[];
+}
+
+export interface ProjectDeployInput {
+  source: string;
+  sourceClient?: ClientId;
+  projectPath: string;
+  targetRoot: string;
+  targetClient: ClientId;
+  signal?: AbortSignal;
+}
+
 export type RecoveryMaterialState = "reserved" | "moving" | "preserved" | "restored";
 
 export interface OperationItemRecord {
@@ -219,7 +267,7 @@ export interface OperationItemRecord {
 export interface OperationRecord {
   id: string;
   planId: string;
-  kind: "sync" | "restore";
+  kind: "sync" | "restore" | "project-deploy" | "project-revoke";
   status: "running" | "succeeded" | "partial" | "failed" | "cancelled" | "interrupted";
   startedAt: string;
   completedAt?: string;
@@ -232,6 +280,10 @@ export interface ExecuteOptions {
 }
 
 export interface ManagementStore {
+  planProjectDeploy(input: ProjectDeployInput): Promise<ProjectDeploymentPlan>;
+  planProjectRevoke(deploymentId: string, signal?: AbortSignal): Promise<ProjectDeploymentPlan>;
+  executeProjectPlan(planId: string, options?: ExecuteOptions): Promise<OperationRecord>;
+  listProjectDeployments(): Promise<ProjectDeployment[]>;
   planSync(input: SyncPlanInput): Promise<SyncPlan>;
   execute(planId: string, options?: ExecuteOptions): Promise<OperationRecord>;
   createBackup(

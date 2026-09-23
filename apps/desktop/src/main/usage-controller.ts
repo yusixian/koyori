@@ -1,10 +1,13 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { realpath, stat } from "node:fs/promises";
 import { basename } from "node:path";
 import { Worker } from "node:worker_threads";
 import type {
   HistorySource,
   ResourceRoot,
   SkillInventory,
+  SkillPreferenceAction,
+  SkillPreferenceCard,
   UsageImport,
   UsageImportCache,
   UsageState,
@@ -17,6 +20,7 @@ import {
   createUsageState,
   mergeUsageImport,
   observeSkills,
+  preferenceAfterAction,
 } from "@koyori/core";
 import { type BrowserWindow, dialog, ipcMain } from "electron";
 import type { CollectionView, HistoryCandidate } from "../bridge";
@@ -66,7 +70,41 @@ export async function createUsageController(deps: Dependencies) {
   let collection: CollectionState = await readCollectionState(`${deps.path}.collection`);
   let busy = false;
   let activeImport: AbortController | undefined;
+  const preferenceCards = new Map<string, { card: SkillPreferenceCard; fingerprint: string }>();
   const now = () => new Date().toISOString();
+  function connectedSkill(skillId: string) {
+    const skill = deps.getInventory()?.skills.find((item) => item.id === skillId);
+    const root = deps.getRoots().find((item) => item.id === skill?.rootId);
+    if (!skill || !root || root.client !== skill.client)
+      throw new Error("Resource is no longer connected");
+    return { skill, root };
+  }
+  async function resourceFingerprint(skillId: string) {
+    const { skill, root } = connectedSkill(skillId);
+    let resolved: string;
+    let file: Awaited<ReturnType<typeof stat>>;
+    try {
+      [resolved, file] = await Promise.all([realpath(skill.path), stat(skill.path)]);
+    } catch {
+      throw new Error("Resource changed; scan Skills and prepare the card again");
+    }
+    if (!file.isFile() || resolved !== (skill.realPath ?? skill.path))
+      throw new Error("Resource changed; scan Skills and prepare the card again");
+    return createHash("sha256")
+      .update(
+        JSON.stringify({
+          skill,
+          root,
+          resolved,
+          dev: file.dev,
+          ino: file.ino,
+          size: file.size,
+          mtimeMs: file.mtimeMs,
+          ctimeMs: file.ctimeMs,
+        }),
+      )
+      .digest("hex");
+  }
   function effectiveSource(source: HistorySource, currentRoots = deps.getRoots()): HistorySource {
     const currentRootIds = new Set(
       currentRoots.filter((root) => root.client === source.client).map((root) => root.id),
@@ -106,10 +144,60 @@ export async function createUsageController(deps: Dependencies) {
   ipcMain.handle("usage:discussion", (event, skillId: unknown, days: unknown) => {
     deps.trusted(event);
     if (typeof skillId !== "string" || skillId.length > 512) throw new Error("Invalid resource");
-    const skill = deps.getInventory()?.skills.find((item) => item.id === skillId);
-    if (!skill || !deps.getRoots().some((root) => root.id === skill.rootId))
-      throw new Error("Resource is no longer connected");
+    const { skill } = connectedSkill(skillId);
     return buildSkillDiscussion(skill, view(windowDays(days)));
+  });
+  ipcMain.handle("usage:preference:plan", async (event, skillId: unknown, action: unknown) => {
+    deps.trusted(event);
+    if (typeof skillId !== "string" || skillId.length > 512) throw new Error("Invalid resource");
+    if (action !== "keep" && action !== "review-later")
+      throw new Error("Unsupported preference action");
+    requireIdle();
+    const { skill } = connectedSkill(skillId);
+    const fingerprint = await resourceFingerprint(skillId);
+    const createdAt = now();
+    const current = state.preferences[skillId];
+    const result = preferenceAfterAction(action as SkillPreferenceAction, current, createdAt);
+    const card: SkillPreferenceCard = {
+      id: randomUUID(),
+      skillId,
+      skillName: skill.name,
+      action,
+      current: current ? { ...current } : null,
+      result,
+      createdAt,
+      expiresAt: new Date(Date.parse(createdAt) + 5 * 60_000).toISOString(),
+    };
+    if (preferenceCards.size >= 32)
+      preferenceCards.delete(preferenceCards.keys().next().value ?? "");
+    preferenceCards.set(card.id, { card, fingerprint });
+    return card;
+  });
+  ipcMain.handle("usage:preference:confirm", async (event, cardId: unknown) => {
+    deps.trusted(event);
+    if (typeof cardId !== "string" || cardId.length > 128)
+      throw new Error("Invalid preference card");
+    const pending = preferenceCards.get(cardId);
+    if (!pending) throw new Error("Preference card is no longer available");
+    return mutate(async () => {
+      if (preferenceCards.get(cardId) !== pending)
+        throw new Error("Preference card is no longer available");
+      preferenceCards.delete(cardId);
+      const { card, fingerprint } = pending;
+      if (Date.now() >= Date.parse(card.expiresAt))
+        throw new Error("Preference card expired; prepare it again");
+      const currentFingerprint = await resourceFingerprint(card.skillId);
+      if (currentFingerprint !== fingerprint)
+        throw new Error("Resource changed; prepare the preference card again");
+      connectedSkill(card.skillId);
+      const current = state.preferences[card.skillId] ?? null;
+      if (JSON.stringify(current) !== JSON.stringify(card.current))
+        throw new Error("Preference changed; prepare the card again");
+      return {
+        ...state,
+        preferences: { ...state.preferences, [card.skillId]: { ...card.result } },
+      };
+    }, 90);
   });
   async function persist(next: UsageState) {
     await writeUsageState(deps.path, next);
@@ -138,11 +226,11 @@ export async function createUsageController(deps: Dependencies) {
   function requireIdle() {
     if (busy || deps.resourceBusy()) throw new Error("An operation is in progress");
   }
-  async function mutate(update: () => UsageState, days: 30 | 90) {
+  async function mutate(update: () => UsageState | Promise<UsageState>, days: 30 | 90) {
     requireIdle();
     busy = true;
     try {
-      await persist(update());
+      await persist(await update());
       return view(days);
     } finally {
       busy = false;

@@ -636,6 +636,46 @@ img {
   font-weight: 700;
 }
 
+.release-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  margin-top: 2.2rem;
+}
+
+.release-integrity {
+  display: grid;
+  gap: 0.85rem;
+  margin: 2rem 0 0;
+  padding-top: 1.35rem;
+  border-top: 1px solid var(--line);
+}
+
+.release-integrity div {
+  display: grid;
+  grid-template-columns: minmax(7rem, 0.2fr) minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.release-integrity dt {
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.release-integrity dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.release-integrity code {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
 .prose-card {
   margin-bottom: 7rem;
   padding: clamp(1.5rem, 4vw, 2.7rem);
@@ -714,6 +754,17 @@ img {
   background: rgba(173, 82, 102, 0.08);
   color: var(--sakura-deep);
   font-size: 0.9em;
+}
+
+.release-external-link {
+  margin: 2rem 0 0;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--line);
+}
+
+.release-external-link a {
+  color: var(--sakura-deep);
+  font-weight: 700;
 }
 
 .search-hero {
@@ -1015,6 +1066,11 @@ img {
 
   .release-facts {
     grid-template-columns: 1fr;
+  }
+
+  .release-integrity div {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
   }
 
   .site-footer nav {

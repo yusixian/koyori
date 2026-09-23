@@ -2,6 +2,7 @@ import type { SkillRecord } from "./types.ts";
 import type { HistoryCoverage, HistorySource, SkillUsage, UsageView } from "./usage-types.ts";
 
 export interface SkillDiscussionDraft {
+  skillId: string;
   skillName: string;
   text: string;
   generatedAt: string;
@@ -90,6 +91,7 @@ export function buildSkillDiscussion(skill: SkillRecord, view: UsageView): Skill
   ];
 
   return {
+    skillId: skill.id,
     skillName: selectedName,
     text: lines.join("\n"),
     generatedAt,

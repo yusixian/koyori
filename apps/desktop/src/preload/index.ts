@@ -2,6 +2,16 @@ import { contextBridge, ipcRenderer } from "electron";
 import type { KoyoriBridge } from "../bridge";
 
 const bridge: KoyoriBridge = {
+  getUpdate: () => ipcRenderer.invoke("update:get"),
+  checkForUpdate: () => ipcRenderer.invoke("update:check"),
+  downloadUpdate: () => ipcRenderer.invoke("update:download"),
+  cancelUpdateDownload: () => ipcRenderer.invoke("update:download:cancel"),
+  installUpdate: () => ipcRenderer.invoke("update:install"),
+  onUpdateChanged: (listener) => {
+    const notify = () => listener();
+    ipcRenderer.on("update:changed", notify);
+    return () => ipcRenderer.removeListener("update:changed", notify);
+  },
   getAgent: () => ipcRenderer.invoke("agent:get"),
   saveAgentConnection: (input) => ipcRenderer.invoke("agent:connection:save", input),
   disconnectAgent: () => ipcRenderer.invoke("agent:disconnect"),
@@ -32,6 +42,8 @@ const bridge: KoyoriBridge = {
   cancelScan: () => ipcRenderer.invoke("skills:cancel"),
   getUsage: (days) => ipcRenderer.invoke("usage:get", days),
   prepareSkillDiscussion: (id, days) => ipcRenderer.invoke("usage:discussion", id, days),
+  planSkillPreference: (id, action) => ipcRenderer.invoke("usage:preference:plan", id, action),
+  confirmSkillPreference: (id) => ipcRenderer.invoke("usage:preference:confirm", id),
   addHistorySource: (rootId) => ipcRenderer.invoke("usage:source:add", rootId),
   disconnectHistorySource: (id) => ipcRenderer.invoke("usage:source:disconnect", id),
   importUsage: (days) => ipcRenderer.invoke("usage:import", days),
@@ -44,6 +56,9 @@ const bridge: KoyoriBridge = {
   getManagement: () => ipcRenderer.invoke("management:get"),
   planSync: (ids, target, replace) =>
     ipcRenderer.invoke("management:sync:plan", ids, target, replace),
+  planProjectDeploy: (id, target) =>
+    ipcRenderer.invoke("management:project:deploy:plan", id, target),
+  planProjectRevoke: (id) => ipcRenderer.invoke("management:project:revoke:plan", id),
   planRestore: (id, target, replace) =>
     ipcRenderer.invoke("management:restore:plan", id, target, replace),
   executePlan: (id) => ipcRenderer.invoke("management:execute", id),
@@ -57,6 +72,10 @@ const bridge: KoyoriBridge = {
   fetchRemoteBackup: (commit) => ipcRenderer.invoke("backup:remote:fetch", commit),
   setAutomaticBackup: (enabled, ids) => ipcRenderer.invoke("backup:remote:automatic", enabled, ids),
   cancelRemoteBackup: () => ipcRenderer.invoke("backup:remote:cancel"),
+  getServices: () => ipcRenderer.invoke("services:get"),
+  saveService: (input) => ipcRenderer.invoke("services:save", input),
+  removeService: (id) => ipcRenderer.invoke("services:remove", id),
+  openService: (id) => ipcRenderer.invoke("services:open", id),
   openProject: () => ipcRenderer.invoke("project:open"),
 };
 contextBridge.exposeInMainWorld("koyori", bridge);

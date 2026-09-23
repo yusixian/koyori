@@ -13,6 +13,16 @@ import { dirname, join, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const LICENSE_NAME = /^(?:licen[cs]e|copying|notice)(?:$|[._-])/i;
+const LICENSE_FALLBACKS = new Map([
+  [
+    "lazy-val@1.0.5",
+    {
+      fileName: "LICENSE",
+      relativePath: "third-party/licenses/lazy-val@1.0.5.MIT.txt",
+      license: "MIT",
+    },
+  ],
+]);
 
 async function readPackage(packageDirectory) {
   const value = JSON.parse(await readFile(join(packageDirectory, "package.json"), "utf8"));
@@ -118,15 +128,26 @@ export async function prepareLicenses(root) {
     const workspacePackage =
       metadata.name.startsWith("@koyori/") &&
       [join(rootDirectory, "packages"), join(rootDirectory, "apps")].includes(dirname(directory));
-    const license = workspacePackage ? "MIT" : metadata.license;
+    const fallbackCandidate = LICENSE_FALLBACKS.get(`${metadata.name}@${metadata.version}`);
+    const license = workspacePackage ? "MIT" : (metadata.license ?? fallbackCandidate?.license);
     if (typeof license !== "string" || license.trim() === "")
       throw new Error(`${metadata.name}@${metadata.version} has no license metadata.`);
-    const files = workspacePackage ? [] : await licenseFiles(directory);
-    if (!workspacePackage && files.length === 0)
-      throw new Error(`${metadata.name}@${metadata.version} has no packaged license file.`);
+    let files = workspacePackage ? [] : await licenseFiles(directory);
+    let fallback;
+    if (!workspacePackage && files.length === 0) {
+      if (!fallbackCandidate)
+        throw new Error(`${metadata.name}@${metadata.version} has no packaged license file.`);
+      await requireNonemptyFile(
+        join(rootDirectory, fallbackCandidate.relativePath),
+        `${metadata.name}@${metadata.version} fallback license`,
+      );
+      fallback = fallbackCandidate;
+      files = [fallbackCandidate.fileName];
+    }
     packagePlans.push({
       directory,
       files,
+      fallback,
       license,
       name: metadata.name,
       version: metadata.version,
@@ -152,7 +173,10 @@ export async function prepareLicenses(root) {
       const destination = join("packages", safePackageDirectory(plan.name, plan.version));
       await mkdir(join(outputDirectory, destination), { recursive: true });
       for (const file of plan.files) {
-        await copyFile(join(plan.directory, file), join(outputDirectory, destination, file));
+        const source = plan.fallback
+          ? join(rootDirectory, plan.fallback.relativePath)
+          : join(plan.directory, file);
+        await copyFile(source, join(outputDirectory, destination, file));
         files.push(join(destination, file).split(sep).join("/"));
       }
     }

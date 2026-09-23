@@ -5,9 +5,16 @@ export type * from "./git-backup-types.ts";
 export { importUsage, importUsageIncremental } from "./import-usage.ts";
 export { createManagementStore } from "./managed-files.ts";
 export type * from "./management-types.ts";
+export type { ReleaseManifest } from "./releases.ts";
+export {
+  getReleaseChannel,
+  parseReleaseManifest,
+} from "./releases.ts";
 export { scanSkills } from "./scan-skills.ts";
 export type { SkillDiscussionDraft } from "./skill-discussion.ts";
 export { buildSkillDiscussion } from "./skill-discussion.ts";
+export type { SkillPreferenceAction, SkillPreferenceCard } from "./skill-preference-card.ts";
+export { preferenceAfterAction } from "./skill-preference-card.ts";
 export type {
   ClientId,
   ResourceRoot,

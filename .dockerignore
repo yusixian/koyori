@@ -5,6 +5,9 @@
 !apps
 !apps/site
 !apps/site/**
+!packages
+!packages/core
+!packages/core/**
 !brand
 !brand/logo.png
 !docs

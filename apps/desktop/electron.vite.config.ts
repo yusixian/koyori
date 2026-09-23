@@ -8,6 +8,7 @@ const { version } = JSON.parse(
 );
 export default defineConfig({
   main: {
+    define: { __APP_VERSION__: JSON.stringify(version) },
     build: {
       externalizeDeps: { exclude: ["@koyori/core"] },
       rollupOptions: {

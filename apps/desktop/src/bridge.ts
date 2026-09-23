@@ -6,10 +6,20 @@ import type {
   ResourceRoot,
   SkillDiscussionDraft,
   SkillInventory,
+  SkillPreferenceAction,
+  SkillPreferenceCard,
   UsageRules,
   UsageView,
 } from "@koyori/core";
 import type { AgentConnectionInput, AgentView } from "./agent-types";
+
+export interface RegisteredService {
+  id: string;
+  name: string;
+  url: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface SourceTarget {
   id: string;
@@ -17,6 +27,7 @@ export interface SourceTarget {
   path: string;
   label: string;
   shared: boolean;
+  scope?: "user" | "project" | "system";
 }
 export interface WorkspaceView {
   roots: ResourceRoot[];
@@ -44,7 +55,7 @@ export interface CollectionView {
 }
 export interface ManagementPlanPreview {
   id: string;
-  kind: "sync" | "restore";
+  kind: "sync" | "restore" | "project-deploy" | "project-revoke";
   expiresAt: string;
   items: {
     name: string;
@@ -81,9 +92,58 @@ export interface ManagementView {
   operations: OperationRecord[];
   busy: boolean;
   lastResult: string | null;
+  projectDeployments: {
+    id: string;
+    status: "deploying" | "active" | "revoking" | "revoked" | "needs-review";
+    projectPath: string;
+    targetRoot: string;
+    targetPath: string;
+    sourcePath: string;
+    createdAt: string;
+    recoveryPath?: string;
+    stagePath?: string;
+    reviewReason?: string;
+  }[];
+}
+
+export type UpdateStatus =
+  | "idle"
+  | "checking"
+  | "current"
+  | "available"
+  | "downloading"
+  | "cancelling"
+  | "cancelled"
+  | "ready"
+  | "installing"
+  | "download-error"
+  | "install-error"
+  | "unsupported"
+  | "error";
+
+export interface UpdateView {
+  status: UpdateStatus;
+  currentVersion: string;
+  channel: "preview" | "stable";
+  checkedAt: string | null;
+  latestVersion: string | null;
+  publishedAt: string | null;
+  progress: {
+    percent: number;
+    transferred: number;
+    total: number;
+    bytesPerSecond: number;
+  } | null;
+  message: string | null;
 }
 
 export interface KoyoriBridge {
+  getUpdate(): Promise<UpdateView>;
+  checkForUpdate(): Promise<UpdateView>;
+  downloadUpdate(): Promise<UpdateView>;
+  cancelUpdateDownload(): Promise<UpdateView>;
+  installUpdate(): Promise<UpdateView>;
+  onUpdateChanged(listener: () => void): () => void;
   getAgent(): Promise<AgentView>;
   saveAgentConnection(input: AgentConnectionInput): Promise<AgentView>;
   disconnectAgent(): Promise<AgentView>;
@@ -107,6 +167,8 @@ export interface KoyoriBridge {
   openProject(): Promise<void>;
   getUsage(windowDays?: 30 | 90): Promise<UsageView>;
   prepareSkillDiscussion(skillId: string, windowDays?: 30 | 90): Promise<SkillDiscussionDraft>;
+  planSkillPreference(skillId: string, action: SkillPreferenceAction): Promise<SkillPreferenceCard>;
+  confirmSkillPreference(cardId: string): Promise<UsageView>;
   addHistorySource(rootId: string): Promise<HistorySource | null>;
   disconnectHistorySource(id: string): Promise<void>;
   importUsage(windowDays?: 30 | 90): Promise<UsageView>;
@@ -122,6 +184,8 @@ export interface KoyoriBridge {
   setCollection(enabled: boolean, candidateIds?: string[]): Promise<CollectionView>;
   getManagement(): Promise<ManagementView>;
   planSync(skillIds: string[], targetId: string, replace: boolean): Promise<ManagementPlanPreview>;
+  planProjectDeploy(skillId: string, targetId: string): Promise<ManagementPlanPreview>;
+  planProjectRevoke(deploymentId: string): Promise<ManagementPlanPreview>;
   planRestore(
     backupId: string,
     targetId: string | null,
@@ -138,6 +202,10 @@ export interface KoyoriBridge {
   fetchRemoteBackup(commit: string): Promise<RemoteBackupView>;
   setAutomaticBackup(enabled: boolean, skillIds: string[]): Promise<RemoteBackupView>;
   cancelRemoteBackup(): Promise<void>;
+  getServices(): Promise<RegisteredService[]>;
+  saveService(input: { id?: string; name: string; url: string }): Promise<RegisteredService[]>;
+  removeService(id: string): Promise<RegisteredService[]>;
+  openService(id: string): Promise<void>;
 }
 declare global {
   const __APP_VERSION__: string;

@@ -23,18 +23,25 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
+import type { FormEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import logo from "../../../../brand/logo.png";
-import type { SourceTarget } from "../bridge";
+import type { RegisteredService, SourceTarget } from "../bridge";
 import "./style.css";
 import { AgentPanel } from "./AgentPanel";
 import { CollectionPanel } from "./CollectionPanel";
 import { ManagementPanel } from "./ManagementPanel";
+import { UpdatePanel } from "./UpdatePanel";
 import { UsagePanel } from "./UsagePanel";
 
 type Page = "skills" | "agent" | "services";
 const names = { "claude-code": "Claude Code", codex: "Codex" };
+function serviceErrorMessage(error: unknown) {
+  return error instanceof Error && error.message.trim()
+    ? error.message
+    : "服务操作失败，请检查本机设置后重试。";
+}
 function usageLabel(usage: SkillUsage | undefined) {
   if (!usage || usage.status === "not-connected") return "尚未采集";
   if (usage.status === "unknown") return "证据不足";
@@ -103,6 +110,13 @@ function App() {
   const [skillView, setSkillView] = useState<"inventory" | "usage" | "manage">("inventory");
   const [pendingDiscussion, setPendingDiscussion] = useState<SkillDiscussionDraft | null>(null);
   const [discussionBusyId, setDiscussionBusyId] = useState<string | null>(null);
+  const [services, setServices] = useState<RegisteredService[]>([]);
+  const [servicesLoading, setServicesLoading] = useState(false);
+  const [servicesBusy, setServicesBusy] = useState(false);
+  const [servicesError, setServicesError] = useState("");
+  const [editingService, setEditingService] = useState<RegisteredService | null>(null);
+  const [serviceName, setServiceName] = useState("");
+  const [serviceUrl, setServiceUrl] = useState("");
   const workspaceRequestRef = useRef(0);
   useEffect(() => {
     let disposed = false;
@@ -133,6 +147,26 @@ function App() {
       unsubscribe();
     };
   }, []);
+  useEffect(() => {
+    if (page !== "services") return;
+    let active = true;
+    setServicesLoading(true);
+    setServicesError("");
+    void window.koyori
+      .getServices()
+      .then((items) => {
+        if (active) setServices(items);
+      })
+      .catch((error: unknown) => {
+        if (active) setServicesError(serviceErrorMessage(error));
+      })
+      .finally(() => {
+        if (active) setServicesLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [page]);
   async function refreshWorkspace() {
     const requestId = ++workspaceRequestRef.current;
     const view = await window.koyori.getWorkspace();
@@ -221,6 +255,58 @@ function App() {
     setQuery("");
     setFilter("all");
   }
+  function resetServiceForm() {
+    setEditingService(null);
+    setServiceName("");
+    setServiceUrl("");
+  }
+  function editService(service: RegisteredService) {
+    setEditingService(service);
+    setServiceName(service.name);
+    setServiceUrl(service.url);
+    setServicesError("");
+  }
+  async function saveService(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setServicesBusy(true);
+    setServicesError("");
+    try {
+      const next = await window.koyori.saveService({
+        ...(editingService ? { id: editingService.id } : {}),
+        name: serviceName,
+        url: serviceUrl,
+      });
+      setServices(next);
+      resetServiceForm();
+    } catch (error) {
+      setServicesError(serviceErrorMessage(error));
+    } finally {
+      setServicesBusy(false);
+    }
+  }
+  async function removeService(service: RegisteredService) {
+    setServicesBusy(true);
+    setServicesError("");
+    try {
+      setServices(await window.koyori.removeService(service.id));
+      if (editingService?.id === service.id) resetServiceForm();
+    } catch (error) {
+      setServicesError(serviceErrorMessage(error));
+    } finally {
+      setServicesBusy(false);
+    }
+  }
+  async function openService(service: RegisteredService) {
+    setServicesBusy(true);
+    setServicesError("");
+    try {
+      await window.koyori.openService(service.id);
+    } catch (error) {
+      setServicesError(serviceErrorMessage(error));
+    } finally {
+      setServicesBusy(false);
+    }
+  }
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -259,7 +345,7 @@ function App() {
             onClick={() => setPage("services")}
           >
             <Link2 size={18} />
-            我的服务<small>筹备中</small>
+            我的服务
           </button>
         </nav>
         <div className="sidebar-note">
@@ -293,10 +379,7 @@ function App() {
             项目与文档
             <ArrowUpRight size={13} />
           </button>
-          <div className="version">
-            <span>v{__APP_VERSION__}</span>
-            <span>开发候选</span>
-          </div>
+          <UpdatePanel />
         </div>
       </aside>
       <main>
@@ -728,19 +811,134 @@ function App() {
             )}
           </>
         ) : page === "services" ? (
-          <section className="coming">
-            <img src={logo} alt="Koyori" />
-            <p className="eyebrow">YOUR CONNECTIONS</p>
-            <h1>常用的服务，也可以在这里。</h1>
-            <p>计划先接入 cos-tool-bot，让桌面成为自己的服务入口。私有能力和凭据继续留在服务器。</p>
-            <div className="planned">
-              <span>当前状态</span>
-              <strong>尚未接入</strong>
-              <p>Bot 桌面通道仍待实现。现在可以在 Agent 中配置自己的模型，开始文字对话。</p>
+          <section className="services-page">
+            <header className="services-heading">
+              <div>
+                <p className="eyebrow">YOUR CONNECTIONS</p>
+                <h1>把常用入口放在手边。</h1>
+                <p>登记自己的服务地址，需要时由系统默认浏览器打开。</p>
+              </div>
+              <div className="heading-mark">
+                <Link2 size={27} />
+              </div>
+            </header>
+            {servicesError && (
+              <div className="notice error services-error" role="alert">
+                <span>{servicesError}</span>
+              </div>
+            )}
+            <div className="services-layout">
+              <section className="service-editor" aria-labelledby="service-form-heading">
+                <div className="service-section-heading">
+                  <div>
+                    <p className="eyebrow">LOCAL BOOKMARKS</p>
+                    <h2 id="service-form-heading">
+                      {editingService ? "编辑服务入口" : "添加服务入口"}
+                    </h2>
+                  </div>
+                  {editingService && (
+                    <button
+                      type="button"
+                      className="text-button"
+                      onClick={resetServiceForm}
+                      disabled={servicesBusy}
+                    >
+                      取消编辑
+                    </button>
+                  )}
+                </div>
+                <form className="service-form" onSubmit={(event) => void saveService(event)}>
+                  <label>
+                    <span>名称</span>
+                    <input
+                      required
+                      maxLength={80}
+                      value={serviceName}
+                      onChange={(event) => setServiceName(event.target.value)}
+                      placeholder="例如：个人面板"
+                      disabled={servicesBusy}
+                    />
+                  </label>
+                  <label>
+                    <span>HTTPS 或本机地址</span>
+                    <input
+                      required
+                      type="url"
+                      maxLength={2048}
+                      value={serviceUrl}
+                      onChange={(event) => setServiceUrl(event.target.value)}
+                      placeholder="https://example.com 或 http://localhost:3000"
+                      disabled={servicesBusy}
+                      spellCheck={false}
+                      autoCapitalize="off"
+                    />
+                  </label>
+                  <button type="submit" className="button primary" disabled={servicesBusy}>
+                    {editingService ? "保存修改" : "添加到我的服务"}
+                  </button>
+                </form>
+              </section>
+              <section className="service-list" aria-labelledby="service-list-heading">
+                <div className="service-section-heading">
+                  <div>
+                    <p className="eyebrow">SAVED HERE</p>
+                    <h2 id="service-list-heading">我的入口</h2>
+                  </div>
+                  <span className="service-count">{services.length} 项</span>
+                </div>
+                {servicesLoading ? (
+                  <p className="service-empty">正在读取本机服务列表…</p>
+                ) : services.length === 0 ? (
+                  <div className="service-empty">
+                    <Link2 size={20} />
+                    <strong>还没有服务入口</strong>
+                    <span>添加一个你常用的 HTTPS 服务，或本机开发服务。</span>
+                  </div>
+                ) : (
+                  <ul className="service-items">
+                    {services.map((service) => (
+                      <li className="service-card" key={service.id}>
+                        <div className="service-card-copy">
+                          <strong>{service.name}</strong>
+                          <code title={service.url}>{service.url}</code>
+                        </div>
+                        <div className="service-actions">
+                          <button
+                            type="button"
+                            className="button primary"
+                            onClick={() => void openService(service)}
+                            disabled={servicesBusy}
+                          >
+                            打开 <ArrowUpRight size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            className="button"
+                            onClick={() => editService(service)}
+                            disabled={servicesBusy}
+                          >
+                            编辑
+                          </button>
+                          <button
+                            type="button"
+                            className="text-button service-remove"
+                            onClick={() => void removeService(service)}
+                            disabled={servicesBusy}
+                          >
+                            移除
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
             </div>
-            <button type="button" className="button" onClick={() => setPage("skills")}>
-              先整理 Skills <ChevronRight size={15} />
-            </button>
+            <p className="service-footnote">
+              服务入口只保存在本机。保存不会访问地址；点击“打开”后，链接会在系统默认浏览器中打开。
+              仅允许 HTTPS，或 localhost、127.0.0.0/8、::1 的 HTTP
+              地址；不接受账号、密码、查询参数或片段。
+            </p>
           </section>
         ) : null}
       </main>
