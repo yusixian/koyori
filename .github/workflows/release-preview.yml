@@ -219,11 +219,20 @@ jobs:
           RELEASE_TAG: ${{ steps.verify.outputs.tag }}
         run: |
           set -euo pipefail
-          node scripts/release-preview.mjs inspect-remote \
-            --repository "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" \
-            --commit "$GITHUB_SHA" --local release-input \
-            --remote remote-assets-draft --plan release-plan-draft.json \
-            --output "$GITHUB_OUTPUT"
+          for attempt in {1..10}; do
+            node scripts/release-preview.mjs inspect-remote \
+              --repository "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" \
+              --commit "$GITHUB_SHA" --local release-input \
+              --remote "remote-assets-draft-$attempt" --plan release-plan-draft.json
+            action=$(jq -r '.action' release-plan-draft.json)
+            if [ "$action" != "create" ]; then
+              echo "action=$action" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "The draft Release is still not visible after creation." >&2
+          exit 1
 
       - name: Upload only missing accepted assets
         if: steps.draft_state.outputs.action == 'upload'
@@ -246,13 +255,20 @@ jobs:
           RELEASE_TAG: ${{ steps.verify.outputs.tag }}
         run: |
           set -euo pipefail
-          node scripts/release-preview.mjs inspect-remote \
-            --repository "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" \
-            --commit "$GITHUB_SHA" --local release-input \
-            --remote remote-assets-complete --plan release-plan-complete.json \
-            --output "$GITHUB_OUTPUT"
-          action=$(jq -r '.action' release-plan-complete.json)
-          test "$action" = "publish" || test "$action" = "published"
+          for attempt in {1..10}; do
+            node scripts/release-preview.mjs inspect-remote \
+              --repository "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" \
+              --commit "$GITHUB_SHA" --local release-input \
+              --remote "remote-assets-complete-$attempt" --plan release-plan-complete.json
+            action=$(jq -r '.action' release-plan-complete.json)
+            if [ "$action" = "publish" ] || [ "$action" = "published" ]; then
+              echo "action=$action" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "The accepted Release asset set is still incomplete." >&2
+          exit 1
 
       - name: Publish the verified prerelease
         if: steps.complete_state.outputs.action == 'publish'
