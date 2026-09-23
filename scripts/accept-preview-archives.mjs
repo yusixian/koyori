@@ -46,9 +46,24 @@ try {
       if (!(await lstat(application)).isDirectory() || !(await lstat(executable)).isFile()) {
         throw new Error(`${archive.file} does not contain the expected application.`);
       }
+      const installedApplication = join(
+        temporary,
+        archive.file.endsWith(".zip") ? "installed-zip" : "installed-dmg",
+        archive.application,
+      );
+      await mkdir(dirname(installedApplication), { recursive: true });
+      execFileSync("/usr/bin/ditto", [application, installedApplication], { stdio: "inherit" });
+      if (mounted) {
+        execFileSync("/usr/bin/hdiutil", ["detach", destination], { stdio: "inherit" });
+        mounted = false;
+      }
+      const installedExecutable = join(installedApplication, "Contents/MacOS/Koyori");
+      if (!(await lstat(installedExecutable)).isFile()) {
+        throw new Error(`${archive.file} did not install the expected application.`);
+      }
       execFileSync("pnpm", ["test:desktop"], {
         stdio: "inherit",
-        env: { ...process.env, KOYORI_EXECUTABLE: executable },
+        env: { ...process.env, KOYORI_EXECUTABLE: installedExecutable },
       });
     } finally {
       if (mounted) {

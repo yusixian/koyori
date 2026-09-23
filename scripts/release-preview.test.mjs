@@ -215,6 +215,20 @@ test("rejects a candidate from another commit", async () => {
   );
 });
 
+test("release workflow requires the checked out package version", async () => {
+  const setup = await fixture();
+  await writeFile(join(setup.root, "package.json"), JSON.stringify({ version: "0.1.0-alpha.2" }));
+  await assert.rejects(
+    verifyPublishInput({
+      root: setup.root,
+      directory: setup.directory,
+      commit: COMMIT,
+      version: VERSION,
+    }),
+    /release version does not match/u,
+  );
+});
+
 test("rejects an artifact whose digest changed after acceptance", async () => {
   const setup = await fixture();
   await writeFile(join(setup.directory, `Koyori-${VERSION}-arm64.dmg`), "tampered");
@@ -226,6 +240,22 @@ test("rejects an artifact whose digest changed after acceptance", async () => {
       version: VERSION,
     }),
     /does not match candidate/u,
+  );
+});
+
+test("rejects an artifact with an incorrect SHA-512 record", async () => {
+  const setup = await fixture();
+  const candidate = JSON.parse(await readFile(setup.candidatePath, "utf8"));
+  candidate.artifacts[0].sha512 = Buffer.alloc(64, 1).toString("base64");
+  await writeFile(setup.candidatePath, JSON.stringify(candidate));
+  await assert.rejects(
+    verifyPublishInput({
+      root: setup.root,
+      directory: setup.directory,
+      commit: COMMIT,
+      version: VERSION,
+    }),
+    /SHA-512 does not match/u,
   );
 });
 

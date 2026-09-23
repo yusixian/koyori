@@ -36,6 +36,8 @@
 
 发布流水线只接受 `main` 上 CI 成功的不可变提交。选择手动或签名模式后构建并验收同一份应用，再上传 draft Release 并回读校验资产。校验通过才公开 Release，最后生成供网站推广的发布清单。同版本 tag 或安装包不覆盖。手动模式没有应用内更新元数据，不宣称自动更新可用。
 
+若 build 已成功而 publish 阶段中断，只在该次 GitHub Actions 运行中**重跑失败的 publish job**，复用已验收的原始 artifact；发布任务会核对 tag、已有资产字节和状态，只补传缺失资产。候选 artifact 保留 14 天；过期后不能重新 dispatch 构建同版本来替换既有字节，应停止并人工核对 draft Release 和恢复方案。已公开的同版本 Release 只能校验，不能覆写。
+
 ### 推广站点 Preview 清单
 
 Release workflow 上传的 `release-output/preview-mac-arm64.json` 只是 Actions artifact，不会进入站点构建。站点从仓库内 `apps/site/public/releases/preview-mac-arm64.json` 读取清单。公开 Release 后，在包含对应 `docs/releases/v<VERSION>.md` 的站点分支运行：
@@ -48,7 +50,7 @@ git diff -- apps/site/public/releases/preview-mac-arm64.json
 git status --short -- apps/site/public/releases/preview-mac-arm64.json
 ```
 
-命令使用当前 `gh` 登录态读取指定公开的 Preview Release、tag commit、`candidate.json`、`acceptance.json` 和实际 DMG。它校验候选记录、验收记录、DMG 大小与 SHA-256，以及核心清单格式后，才原子替换站点源文件。失败不改旧清单；修复外部原因后用同一 tag 重试，同一内容重复执行不会产生改动。同版本内容不同会报错，不覆盖已有记录。不要从 Actions artifact 手工复制到站点目录。
+命令使用当前 `gh` 登录态读取指定公开的 Preview Release、tag commit、`candidate.json`、`acceptance.json` 和完整发行资产。它校验候选记录、两种安装包的验收记录、全部资产摘要与大小、更新元数据及核心清单格式后，才原子替换站点源文件。失败不改旧清单；修复外部原因后用同一 tag 重试，同一内容重复执行不会产生改动。同版本内容不同会报错，不覆盖已有记录。不要从 Actions artifact 手工复制到站点目录。
 
 将清单文件和对应发布说明合入站点构建所用分支，再部署站点。部署后核对公网 `/download/` 的版本、下载地址和 SHA-256，并实际验证该地址下载的 DMG 摘要；这一步未由 helper 或本地构建完成。若合入或部署失败，旧站点保持原状态，可重试站点交付，无需重发 Release。
 

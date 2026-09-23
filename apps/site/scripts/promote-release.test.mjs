@@ -29,16 +29,21 @@ async function fixture() {
   const assets = join(root, "assets");
   await mkdir(join(root, "docs/releases"), { recursive: true });
   await mkdir(assets);
+  await writeFile(join(root, "package.json"), JSON.stringify({ version }));
   await writeFile(join(root, `docs/releases/v${version}.md`), "# Preview\n");
   const dmgName = `Koyori-${version}-arm64.dmg`;
   const dmg = Buffer.from("verified public DMG fixture");
-  await writeFile(join(assets, dmgName), dmg);
-  const artifacts = expectedPublicArtifactNames(version, false).map((file) => ({
-    file,
-    sha256: digest(file === dmgName ? dmg : Buffer.from(file)),
-    sha512: createHash("sha512").update(file).digest("base64"),
-    bytes: file === dmgName ? dmg.length : Buffer.byteLength(file),
-  }));
+  const artifacts = [];
+  for (const file of expectedPublicArtifactNames(version, false)) {
+    const bytes = file === dmgName ? dmg : Buffer.from(file);
+    await writeFile(join(assets, file), bytes);
+    artifacts.push({
+      file,
+      sha256: digest(bytes),
+      sha512: createHash("sha512").update(bytes).digest("base64"),
+      bytes: bytes.length,
+    });
+  }
   const candidate = {
     version,
     commit,
@@ -55,14 +60,29 @@ async function fixture() {
   await writeFile(join(assets, "candidate.json"), candidateText);
   await writeFile(
     join(assets, "acceptance.json"),
-    JSON.stringify({ schemaVersion: 1, version, commit, candidateSha256: digest(candidateText) }),
+    JSON.stringify({
+      schemaVersion: 1,
+      version,
+      commit,
+      candidateSha256: digest(candidateText),
+      acceptedAt: "2026-09-22T13:00:00.000Z",
+      platform: "darwin",
+      arch: "arm64",
+      testedArchives: [dmgName, `Koyori-${version}-arm64.zip`].map((file) => {
+        const artifact = artifacts.find((item) => item.file === file);
+        return { file, sha256: artifact.sha256, bytes: artifact.bytes, application: "Koyori.app" };
+      }),
+      upgrade: { status: "not-applicable", reason: "first-public-release" },
+    }),
   );
   const release = {
     tagName: tag,
     isDraft: false,
     isPrerelease: true,
     publishedAt: "2026-09-22T13:00:00.000Z",
-    assets: ["candidate.json", "acceptance.json", dmgName].map((name) => ({ name })),
+    assets: ["candidate.json", "acceptance.json", ...artifacts.map((item) => item.file)].map(
+      (name) => ({ name }),
+    ),
   };
   const target = join(site, "public/releases/preview-mac-arm64.json");
   const runGh = async (args) => {
@@ -89,6 +109,17 @@ test("promotes a verified public Release and is safe to retry", async () => {
   assert.equal(await readFile(setup.target, "utf8"), previous);
 });
 
+test("promotes a published version after the workspace version has advanced", async () => {
+  const setup = await fixture();
+  await writeFile(
+    join(setup.site, "../../package.json"),
+    JSON.stringify({ version: "0.1.0-alpha.2" }),
+  );
+  const result = await promotePreviewRelease({ tag, root: setup.site, runGh: setup.runGh });
+  assert.equal(result.catalog.version, version);
+  assert.equal(result.changed, true);
+});
+
 test("keeps the old catalog when Release is draft or the actual DMG differs", async () => {
   const setup = await fixture();
   await mkdir(join(setup.site, "public/releases"), { recursive: true });
@@ -111,6 +142,30 @@ test("keeps the old catalog when Release is draft or the actual DMG differs", as
 test("rejects a tag that does not resolve to the accepted commit", async () => {
   const setup = await fixture();
   const runGh = async (args) => (args[0] === "api" ? "b".repeat(40) : setup.runGh(args));
-  await assert.rejects(promotePreviewRelease({ tag, root: setup.site, runGh }), /acceptance.json/u);
+  await assert.rejects(
+    promotePreviewRelease({ tag, root: setup.site, runGh }),
+    /different commit/u,
+  );
+  await assert.rejects(readFile(setup.target), { code: "ENOENT" });
+});
+
+test("rejects an incomplete Release or archive acceptance before changing the site", async () => {
+  const setup = await fixture();
+  setup.release.assets = setup.release.assets.filter(
+    (asset) => asset.name !== `Koyori-${version}-arm64.zip`,
+  );
+  await assert.rejects(
+    promotePreviewRelease({ tag, root: setup.site, runGh: setup.runGh }),
+    /exact accepted asset set/u,
+  );
+  setup.release.assets.push({ name: `Koyori-${version}-arm64.zip` });
+  const acceptancePath = join(setup.assets, "acceptance.json");
+  const acceptance = JSON.parse(await readFile(acceptancePath, "utf8"));
+  acceptance.testedArchives = acceptance.testedArchives.slice(0, 1);
+  await writeFile(acceptancePath, JSON.stringify(acceptance));
+  await assert.rejects(
+    promotePreviewRelease({ tag, root: setup.site, runGh: setup.runGh }),
+    /Both public archives/u,
+  );
   await assert.rejects(readFile(setup.target), { code: "ENOENT" });
 });

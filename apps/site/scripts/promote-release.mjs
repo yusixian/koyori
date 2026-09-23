@@ -1,13 +1,13 @@
 import { execFile } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
-import { createReadStream } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { getReleaseChannel, parseReleaseManifest } from "@koyori/core";
-import { createPreviewCatalog } from "../../../scripts/release-preview.mjs";
+import { expectedPublicArtifactNames } from "../../../scripts/package-desktop-config.mjs";
+import { createPreviewCatalog, verifyPublishInput } from "../../../scripts/release-preview.mjs";
 
 const execFileAsync = promisify(execFile);
 const repository = "yusixian/koyori";
@@ -17,12 +17,6 @@ const commitPattern = /^[0-9a-f]{40}$/u;
 async function gh(args) {
   const { stdout } = await execFileAsync("gh", args, { maxBuffer: 4 * 1024 * 1024 });
   return stdout.trim();
-}
-
-async function sha256(path) {
-  const hash = createHash("sha256");
-  for await (const chunk of createReadStream(path)) hash.update(chunk);
-  return hash.digest("hex");
 }
 
 function requireReleaseAsset(release, name) {
@@ -56,10 +50,6 @@ export async function promotePreviewRelease({ tag, root = siteRoot, runGh = gh }
   if (release.tagName !== tag || release.isDraft !== false || release.isPrerelease !== true) {
     throw new Error("The matching Preview Release is not public.");
   }
-  const dmgName = `Koyori-${version}-arm64.dmg`;
-  for (const name of ["candidate.json", "acceptance.json", dmgName]) {
-    requireReleaseAsset(release, name);
-  }
   const commit = (
     await runGh(["api", `repos/${repository}/commits/${tag}`, "--jq", ".sha"])
   ).trim();
@@ -78,7 +68,29 @@ export async function promotePreviewRelease({ tag, root = siteRoot, runGh = gh }
   const targetPath = join(root, "public/releases/preview-mac-arm64.json");
   let stagedPath;
   try {
-    for (const name of ["candidate.json", "acceptance.json", dmgName]) {
+    await runGh([
+      "release",
+      "download",
+      tag,
+      "--repo",
+      repository,
+      "--pattern",
+      "candidate.json",
+      "--dir",
+      temporaryDirectory,
+    ]);
+    const candidatePath = join(temporaryDirectory, "candidate.json");
+    const candidate = JSON.parse(await readFile(candidatePath, "utf8"));
+    const expectedFiles = [
+      "candidate.json",
+      "acceptance.json",
+      ...expectedPublicArtifactNames(version, candidate.notarized === true),
+    ];
+    if (!Array.isArray(release.assets) || release.assets.length !== expectedFiles.length) {
+      throw new Error("The published Release does not contain the exact accepted asset set.");
+    }
+    for (const name of expectedFiles) requireReleaseAsset(release, name);
+    for (const name of expectedFiles.filter((file) => file !== "candidate.json")) {
       await runGh([
         "release",
         "download",
@@ -91,18 +103,13 @@ export async function promotePreviewRelease({ tag, root = siteRoot, runGh = gh }
         temporaryDirectory,
       ]);
     }
-    const candidatePath = join(temporaryDirectory, "candidate.json");
-    const acceptancePath = join(temporaryDirectory, "acceptance.json");
-    const candidateDigest = await sha256(candidatePath);
-    const acceptance = JSON.parse(await readFile(acceptancePath, "utf8"));
-    if (
-      acceptance.schemaVersion !== 1 ||
-      acceptance.version !== version ||
-      acceptance.commit !== commit ||
-      acceptance.candidateSha256 !== candidateDigest
-    ) {
-      throw new Error("Published acceptance.json does not match candidate.json and the tag.");
-    }
+    await verifyPublishInput({
+      root: resolve(root, "../.."),
+      directory: temporaryDirectory,
+      commit,
+      version,
+      requireCurrentVersion: false,
+    });
     const catalogPath = join(temporaryDirectory, "catalog.json");
     await createPreviewCatalog({
       candidatePath,
@@ -112,15 +119,6 @@ export async function promotePreviewRelease({ tag, root = siteRoot, runGh = gh }
     const catalog = parseReleaseManifest(JSON.parse(await readFile(catalogPath, "utf8")));
     if (catalog.version !== version || catalog.commit !== commit) {
       throw new Error("The catalog does not match the published tag and commit.");
-    }
-    const dmgPath = join(temporaryDirectory, dmgName);
-    const dmgInfo = await stat(dmgPath);
-    if (
-      !dmgInfo.isFile() ||
-      dmgInfo.size !== catalog.download.bytes ||
-      (await sha256(dmgPath)) !== catalog.download.sha256
-    ) {
-      throw new Error("The downloaded Release DMG does not match the catalog size and SHA-256.");
     }
     const current = await readFile(targetPath, "utf8").catch((error) => {
       if (error.code === "ENOENT") return null;

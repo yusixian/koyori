@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { createWriteStream } from "node:fs";
+import { createReadStream, createWriteStream } from "node:fs";
 import { appendFile, lstat, mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { Readable } from "node:stream";
@@ -103,11 +103,17 @@ export async function verifyArchiveInputs({ candidatePath, commit }) {
   return expectedArchiveTests(candidate);
 }
 
-export async function verifyPublishInput({ root, directory, commit, version }) {
+export async function verifyPublishInput({
+  root,
+  directory,
+  commit,
+  version,
+  requireCurrentVersion = true,
+}) {
   requireCommit(commit);
   assertAlphaVersion(version);
   const packageJson = await readJson(join(root, "package.json"), "root package");
-  if (packageJson.version !== version) {
+  if (requireCurrentVersion && packageJson.version !== version) {
     throw new Error("The release version does not match the checked out package version.");
   }
   await requireRegularFile(join(root, `docs/releases/v${version}.md`), "release notes");
@@ -411,9 +417,12 @@ async function verifyCandidateArtifacts(directory, candidate) {
   for (const artifact of candidate.artifacts) {
     const path = join(directory, artifact.file);
     await requireRegularFile(path, artifact.file);
-    const [digest, info] = await Promise.all([sha256(path), lstat(path)]);
-    if (digest !== artifact.sha256 || info.size !== artifact.bytes) {
+    const [digests, info] = await Promise.all([fileDigests(path), lstat(path)]);
+    if (digests.sha256 !== artifact.sha256 || info.size !== artifact.bytes) {
       throw new Error(`${artifact.file} does not match candidate.json.`);
+    }
+    if (digests.sha512 !== artifact.sha512) {
+      throw new Error(`${artifact.file} SHA-512 does not match candidate.json.`);
     }
   }
 }
@@ -550,9 +559,19 @@ async function requireRegularFile(path, description) {
 }
 
 async function sha256(path) {
-  return createHash("sha256")
-    .update(await readFile(path))
-    .digest("hex");
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(path)) hash.update(chunk);
+  return hash.digest("hex");
+}
+
+async function fileDigests(path) {
+  const sha256Hash = createHash("sha256");
+  const sha512Hash = createHash("sha512");
+  for await (const chunk of createReadStream(path)) {
+    sha256Hash.update(chunk);
+    sha512Hash.update(chunk);
+  }
+  return { sha256: sha256Hash.digest("hex"), sha512: sha512Hash.digest("base64") };
 }
 
 function requireCommit(value) {
