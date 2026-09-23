@@ -75,7 +75,7 @@ export async function recordAcceptance({
   const version = requireString(packageJson.version, "root package version");
   const candidate = await readCandidate(candidatePath, { version, commit });
   await verifyCandidateArtifacts(dirname(candidatePath), candidate);
-  if (candidate.notarized) await verifyUpdateMetadata(dirname(candidatePath), candidate);
+  if (hasUpdateMetadata(candidate)) await verifyUpdateMetadata(dirname(candidatePath), candidate);
   const testedArchives = await readArchiveTests(archiveTestsPath, candidate);
   const candidateSha256 = await sha256(candidatePath);
   const acceptance = {
@@ -88,8 +88,8 @@ export async function recordAcceptance({
     arch: "arm64",
     testedArchives,
     upgrade: {
-      status: "not-applicable",
-      reason: "first-public-release",
+      status: "not-tested",
+      reason: "no-upgrade-test-evidence",
     },
   };
   await writeJsonAtomic(outputPath, acceptance);
@@ -99,7 +99,7 @@ export async function recordAcceptance({
 export async function verifyArchiveInputs({ candidatePath, commit, allowLocalDirty = false }) {
   const candidate = await readCandidate(candidatePath, { commit, allowLocalDirty });
   await verifyCandidateArtifacts(dirname(candidatePath), candidate);
-  if (candidate.notarized) await verifyUpdateMetadata(dirname(candidatePath), candidate);
+  if (hasUpdateMetadata(candidate)) await verifyUpdateMetadata(dirname(candidatePath), candidate);
   return expectedArchiveTests(candidate);
 }
 
@@ -124,11 +124,11 @@ export async function verifyPublishInput({
   const expectedFiles = [
     "candidate.json",
     "acceptance.json",
-    ...expectedPublicArtifactNames(version, candidate.notarized),
+    ...expectedPublicArtifactNames(version, hasUpdateMetadata(candidate)),
   ];
   await requireExactFiles(directory, expectedFiles);
   await verifyCandidateArtifacts(directory, candidate);
-  if (candidate.notarized) await verifyUpdateMetadata(directory, candidate);
+  if (hasUpdateMetadata(candidate)) await verifyUpdateMetadata(directory, candidate);
 
   const acceptance = await readAcceptance(acceptancePath, { version, commit });
   const candidateSha256 = await sha256(candidatePath);
@@ -203,11 +203,15 @@ export function planReleaseContinuation({
   if (tagCommit !== null && tagCommit !== commit) {
     throw new Error("The existing release tag points to a different commit.");
   }
-  if (publishedTags.some((published) => published !== tag) || publishedTags.length > 1) {
-    throw new Error("This first-public-release workflow found another published Release.");
+  const releaseVersion = alphaVersionParts(tag);
+  for (const published of publishedTags) {
+    if (published === tag) continue;
+    const previous = alphaVersionParts(published);
+    if (compareAlphaVersions(previous, releaseVersion) >= 0) {
+      throw new Error("A published Release is not older than this Preview.");
+    }
   }
   if (release === null) {
-    if (publishedTags.length) throw new Error("Published Release state is inconsistent.");
     return { action: "create", missing: localFiles };
   }
   if (
@@ -217,10 +221,10 @@ export function planReleaseContinuation({
   ) {
     throw new Error("The existing Release has a different identity or is not a prerelease.");
   }
-  if (release.draft && publishedTags.length) {
+  if (release.draft && publishedTags.includes(tag)) {
     throw new Error("Draft and published Release state is inconsistent.");
   }
-  if (!release.draft && (publishedTags.length !== 1 || tagCommit !== commit)) {
+  if (!release.draft && (!publishedTags.includes(tag) || tagCommit !== commit)) {
     throw new Error("The published Release or tag cannot be verified.");
   }
   if (
@@ -336,7 +340,7 @@ export async function createPreviewCatalog({ candidatePath, publishedAt, outputP
     arch: "arm64",
     minimumSystemVersion: candidate.minimumSystemVersion,
     signing: candidate.signing,
-    installation: candidate.notarized ? "automatic" : "manual",
+    installation: hasUpdateMetadata(candidate) ? "automatic" : "manual",
     releaseNotesUrl: `https://github.com/yusixian/koyori/releases/tag/v${candidate.version}`,
     download: {
       url: `https://github.com/yusixian/koyori/releases/download/v${candidate.version}/${dmgName}`,
@@ -369,19 +373,23 @@ async function readCandidate(path, expected = {}) {
     candidate.distribution === "manual-preview-candidate" &&
     (candidate.signing === "unsigned" || candidate.signing === "signed") &&
     candidate.notarized === false;
+  const developmentUpdate =
+    candidate.distribution === "development-update-candidate" &&
+    candidate.signing === "signed" &&
+    candidate.notarized === false;
   if (
     (candidate.dirty !== false && !(expected.allowLocalDirty && candidate.dirty === true)) ||
     candidate.platform !== "darwin" ||
     candidate.arch !== "arm64" ||
     candidate.minimumSystemVersion !== MAC_MINIMUM_SYSTEM_VERSION ||
-    (!notarized && !manual)
+    (!notarized && !manual && !developmentUpdate)
   ) {
     throw new Error("candidate.json is not a clean Apple Silicon preview candidate.");
   }
   if (!Array.isArray(candidate.artifacts)) {
     throw new Error("candidate.json artifacts must be an array.");
   }
-  const expectedNames = expectedPublicArtifactNames(version, notarized);
+  const expectedNames = expectedPublicArtifactNames(version, notarized || developmentUpdate);
   if (candidate.artifacts.length !== expectedNames.length) {
     throw new Error("candidate.json does not contain the exact public artifact set.");
   }
@@ -392,6 +400,26 @@ async function readCandidate(path, expected = {}) {
     throw new Error("candidate.json contains duplicate artifact names.");
   }
   return { ...candidate, version, commit, artifacts };
+}
+
+function hasUpdateMetadata(candidate) {
+  return (
+    candidate.distribution === "preview-candidate" ||
+    candidate.distribution === "development-update-candidate"
+  );
+}
+
+function alphaVersionParts(tag) {
+  const match = /^v(\d+)\.(\d+)\.(\d+)-alpha\.(\d+)$/u.exec(tag);
+  if (!match) throw new Error("Published Releases must use Koyori alpha version tags.");
+  return match.slice(1).map(BigInt);
+}
+
+function compareAlphaVersions(left, right) {
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) return left[index] > right[index] ? 1 : -1;
+  }
+  return 0;
 }
 
 function normalizeArtifact(artifact, expectedName) {
@@ -464,10 +492,14 @@ async function readAcceptance(path, expected) {
   if (!isRecord(acceptance.upgrade)) throw new Error("acceptance.json upgrade is invalid.");
   requireExactKeys(acceptance.upgrade, UPGRADE_KEYS, "acceptance upgrade");
   if (
-    acceptance.upgrade.status !== "not-applicable" ||
-    acceptance.upgrade.reason !== "first-public-release"
+    !(
+      (acceptance.upgrade.status === "not-applicable" &&
+        acceptance.upgrade.reason === "first-public-release") ||
+      (acceptance.upgrade.status === "not-tested" &&
+        acceptance.upgrade.reason === "no-upgrade-test-evidence")
+    )
   ) {
-    throw new Error("This first-release workflow cannot claim an upgrade was verified.");
+    throw new Error("The upgrade status is invalid or claims unrecorded evidence.");
   }
   return acceptance;
 }

@@ -75,17 +75,18 @@ export function createDesktopBuilderConfig({
   developmentSigned = false,
   developmentIdentity,
 }) {
-  const publish = signed
-    ? [
-        {
-          provider: "github",
-          owner: "yusixian",
-          repo: "koyori",
-          channel: "alpha",
-          releaseType: "prerelease",
-        },
-      ]
-    : null;
+  const publish =
+    signed || developmentSigned
+      ? [
+          {
+            provider: "github",
+            owner: "yusixian",
+            repo: "koyori",
+            channel: "alpha",
+            releaseType: "prerelease",
+          },
+        ]
+      : null;
 
   return {
     appId: "ren.cosine.koyori",
@@ -138,9 +139,11 @@ export function createCandidateManifest({
     minimumSystemVersion: MAC_MINIMUM_SYSTEM_VERSION,
     distribution: signed
       ? "preview-candidate"
-      : manualPreview || developmentSigned
-        ? "manual-preview-candidate"
-        : "local-candidate",
+      : developmentSigned
+        ? "development-update-candidate"
+        : manualPreview
+          ? "manual-preview-candidate"
+          : "local-candidate",
     signing: signed ? "notarized" : developmentSigned ? "signed" : "unsigned",
     notarized: signed,
     artifacts,
@@ -207,9 +210,9 @@ export function validateAlphaUpdateMetadata({ value, version, artifacts }) {
   }
 }
 
-export function expectedPublicArtifactNames(version, signed) {
+export function expectedPublicArtifactNames(version, withUpdates) {
   const base = `Koyori-${version}-arm64`;
   const names = [`${base}.dmg`, `${base}.dmg.blockmap`, `${base}.zip`, `${base}.zip.blockmap`];
-  if (signed) names.push("alpha-mac.yml");
+  if (withUpdates) names.push("alpha-mac.yml");
   return names;
 }

@@ -4,6 +4,7 @@ import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promi
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
+import { stringify as stringifyYaml } from "yaml";
 import { expectedPublicArtifactNames } from "../../../scripts/package-desktop-config.mjs";
 import { promotePreviewRelease } from "./promote-release.mjs";
 
@@ -22,7 +23,7 @@ function digest(value) {
   return createHash("sha256").update(value).digest("hex");
 }
 
-async function fixture() {
+async function fixture({ developmentSigned = false } = {}) {
   const root = await mkdtemp(join(tmpdir(), "koyori-promotion-test-"));
   directories.push(root);
   const site = join(root, "apps/site");
@@ -34,9 +35,33 @@ async function fixture() {
   const dmgName = `Koyori-${version}-arm64.dmg`;
   const dmg = Buffer.from("verified public DMG fixture");
   const artifacts = [];
-  for (const file of expectedPublicArtifactNames(version, false)) {
+  const artifactNames = expectedPublicArtifactNames(version, developmentSigned);
+  for (const file of artifactNames.filter((name) => name !== "alpha-mac.yml")) {
     const bytes = file === dmgName ? dmg : Buffer.from(file);
     await writeFile(join(assets, file), bytes);
+  }
+  if (developmentSigned) {
+    const zipName = `Koyori-${version}-arm64.zip`;
+    const files = [dmgName, zipName].map((name) => {
+      const bytes = name === dmgName ? dmg : Buffer.from(name);
+      return {
+        url: name,
+        sha512: createHash("sha512").update(bytes).digest("base64"),
+        size: bytes.length,
+      };
+    });
+    await writeFile(
+      join(assets, "alpha-mac.yml"),
+      stringifyYaml({
+        version,
+        files,
+        path: zipName,
+        sha512: files[1].sha512,
+      }),
+    );
+  }
+  for (const file of artifactNames) {
+    const bytes = await readFile(join(assets, file));
     artifacts.push({
       file,
       sha256: digest(bytes),
@@ -51,8 +76,8 @@ async function fixture() {
     platform: "darwin",
     arch: "arm64",
     minimumSystemVersion: "13.0",
-    distribution: "manual-preview-candidate",
-    signing: "unsigned",
+    distribution: developmentSigned ? "development-update-candidate" : "manual-preview-candidate",
+    signing: developmentSigned ? "signed" : "unsigned",
     notarized: false,
     artifacts,
   };
@@ -72,7 +97,7 @@ async function fixture() {
         const artifact = artifacts.find((item) => item.file === file);
         return { file, sha256: artifact.sha256, bytes: artifact.bytes, application: "Koyori.app" };
       }),
-      upgrade: { status: "not-applicable", reason: "first-public-release" },
+      upgrade: { status: "not-tested", reason: "no-upgrade-test-evidence" },
     }),
   );
   const release = {
@@ -107,6 +132,28 @@ test("promotes a verified public Release and is safe to retry", async () => {
   const second = await promotePreviewRelease({ tag, root: setup.site, runGh: setup.runGh });
   assert.equal(second.changed, false);
   assert.equal(await readFile(setup.target, "utf8"), previous);
+});
+
+test("promotes a development-signed update release and refuses an older catalog", async () => {
+  const setup = await fixture({ developmentSigned: true });
+  const result = await promotePreviewRelease({ tag, root: setup.site, runGh: setup.runGh });
+  assert.equal(result.catalog.installation, "automatic");
+  assert.equal(result.catalog.signing, "signed");
+  const newerVersion = "0.1.0-alpha.2";
+  const newer = {
+    ...result.catalog,
+    version: newerVersion,
+    releaseNotesUrl: `https://github.com/yusixian/koyori/releases/tag/v${newerVersion}`,
+    download: {
+      ...result.catalog.download,
+      url: `https://github.com/yusixian/koyori/releases/download/v${newerVersion}/Koyori-${newerVersion}-arm64.dmg`,
+    },
+  };
+  await writeFile(setup.target, `${JSON.stringify(newer, null, 2)}\n`);
+  await assert.rejects(
+    promotePreviewRelease({ tag, root: setup.site, runGh: setup.runGh }),
+    /not older/u,
+  );
 });
 
 test("promotes a published version after the workspace version has advanced", async () => {

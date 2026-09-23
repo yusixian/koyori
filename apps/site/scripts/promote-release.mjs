@@ -84,7 +84,10 @@ export async function promotePreviewRelease({ tag, root = siteRoot, runGh = gh }
     const expectedFiles = [
       "candidate.json",
       "acceptance.json",
-      ...expectedPublicArtifactNames(version, candidate.notarized === true),
+      ...expectedPublicArtifactNames(
+        version,
+        candidate.notarized === true || candidate.distribution === "development-update-candidate",
+      ),
     ];
     if (!Array.isArray(release.assets) || release.assets.length !== expectedFiles.length) {
       throw new Error("The published Release does not contain the exact accepted asset set.");
@@ -131,6 +134,9 @@ export async function promotePreviewRelease({ tag, root = siteRoot, runGh = gh }
         throw new Error("This version is already promoted with different catalog bytes.");
       }
       if (current === next) return { catalog, changed: false };
+      if (comparePreviewVersions(previous.version, catalog.version) >= 0) {
+        throw new Error("The published site catalog is not older than this Preview.");
+      }
     }
     await mkdir(dirname(targetPath), { recursive: true });
     stagedPath = join(dirname(targetPath), `.preview-mac-arm64-${randomUUID()}.json`);
@@ -142,6 +148,20 @@ export async function promotePreviewRelease({ tag, root = siteRoot, runGh = gh }
     if (stagedPath) await rm(stagedPath, { force: true });
     await rm(temporaryDirectory, { recursive: true, force: true });
   }
+}
+
+function comparePreviewVersions(left, right) {
+  const parts = (version) => {
+    const match = /^(\d+)\.(\d+)\.(\d+)-alpha\.(\d+)$/u.exec(version);
+    if (!match) throw new Error("Expected Koyori alpha Preview versions.");
+    return match.slice(1).map(BigInt);
+  };
+  const first = parts(left);
+  const second = parts(right);
+  for (let index = 0; index < first.length; index += 1) {
+    if (first[index] !== second[index]) return first[index] > second[index] ? 1 : -1;
+  }
+  return 0;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

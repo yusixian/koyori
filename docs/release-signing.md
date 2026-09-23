@@ -1,10 +1,10 @@
 # macOS Preview 签名与发布
 
-首版面向 macOS 13 及以上的 Apple Silicon Mac。根 `package.json` 是版本来源；签名候选的具体版本以后续发布提交为准。本文描述配置流程，不代表证书、公证或公开发行已经完成。
+Preview 面向 macOS 13 及以上的 Apple Silicon Mac。根 `package.json` 是版本来源；v0.1.0-alpha.1 已以 Apple Development 签名、未公证的手动安装包公开发布。后续候选的签名、更新与发布状态以对应验收记录为准。
 
 ## Apple 凭据
 
-要让站外下载的应用通过通常的 Gatekeeper 检查，需要 **Developer ID Application** 证书及其私钥，导出为带密码的 `.p12`。`Apple Development` 只用于开发测试，可制作明确标记为已签名、未公证的手动安装 Preview；用户可能仍需在系统设置中手动允许打开。创建 Developer ID 证书需要账户持有人；拥有 App 管理角色不代表拥有此权限。
+要让站外下载的应用通过通常的 Gatekeeper 检查，需要 **Developer ID Application** 证书及其私钥，导出为带密码的 `.p12`。`Apple Development` 只用于开发测试；可制作明确标记为已签名、未公证的 Preview，并在相同签名身份的后续 Preview 间试验应用内更新。用户可能仍需在系统设置中手动允许打开，不能当作正式分发。创建 Developer ID 证书需要账户持有人；拥有 App 管理角色不代表拥有此权限。
 
 可以由构建维护者在本机生成私钥和 CSR，将 **CSR 公钥申请文件**交给账户持有人。持有人在 Apple Developer 的 Certificates 页面选择 Developer ID Application，上传 CSR 后返回 `.cer`。私钥留在生成 CSR 的机器，将 `.cer` 与对应私钥组合导出 `.p12`。不要仅下载证书公钥后误认为拥有签名私钥，也不要撤销其他应用正在使用的证书。
 
@@ -28,16 +28,16 @@
 
 - `pnpm package:mac`：本地未签名候选，不包含更新源配置，不会发布。
 - 可信发布流水线选择 `manual` 时，以 `KOYORI_MANUAL_PREVIEW=1` 构建干净提交的未签名候选。它只支持下载后手动安装，不包含更新源配置；发布清单必须标明未签名。
-- 选择 `development-signed` 时，以 `KOYORI_DEVELOPMENT_SIGNED_PREVIEW=1` 和 Apple Development `.p12` 构建干净提交的已签名候选。本机也可用 `CSC_NAME` 指定钥匙串中的 Apple Development 身份；试构建可加 `KOYORI_LOCAL_PREVIEW=1`，其 dirty 状态会写入候选记录，不能通过公开发布校验。构建会验证证书类型和 Team ID；产物未公证，只支持手动安装，不包含应用内更新源配置。下载者可能需要通过 macOS“隐私与安全性”手动允许打开。
+- 选择 `development-signed` 时，以 `KOYORI_DEVELOPMENT_SIGNED_PREVIEW=1` 和 Apple Development `.p12` 构建干净提交的已签名候选。本机也可用 `CSC_NAME` 指定钥匙串中的 Apple Development 身份；试构建可加 `KOYORI_LOCAL_PREVIEW=1`，其 dirty 状态会写入候选记录，不能通过公开发布校验。构建会验证证书类型和 Team ID；产物未公证，但包含 alpha 更新源和元数据。下载者可能需要通过 macOS“隐私与安全性”手动允许打开。alpha.1 本身没有更新源，升级到首个带更新源版本仍需手动安装。
 - 开发签名不请求在线时间戳；证书过期后不要假定旧包仍可正常验证，发布页应保持 Preview 提示并及时换证构建新版本。
 - 本机试构建的两份压缩包可用 `node scripts/accept-preview-archives.mjs --candidate artifacts/candidate.json --commit "$(git rev-parse HEAD)" --output artifacts/archive-tests-local.json --allow-local-dirty` 运行安装与启动验收；此标志只用于本机验收，不能生成公开发行的 acceptance 记录。
 - 签名任务设置 `KOYORI_SIGNED_RELEASE=1` 后运行同一命令：要求干净工作树、alpha 版本和全部凭据；启用 Developer ID 签名、Hardened Runtime、公证及 app ticket 验证。缺少身份或公证失败就中止。
 
-Developer ID 公证候选同时生成 DMG、ZIP、blockmap 和 `alpha-mac.yml`。Apple Development 候选不生成更新元数据。DMG 容器本身不额外签名。`artifacts/candidate.json` 记录源码 commit、版本、架构、签名状态和每份发行文件的摘要，不能仅凭生成了这个 JSON 就跳过安装验收。
+Developer ID 公证候选和 Apple Development 更新候选都生成 DMG、ZIP、blockmap 和 `alpha-mac.yml`，应用内含 `app-update.yml`。DMG 容器本身不额外签名。`artifacts/candidate.json` 记录源码 commit、版本、架构、签名状态和每份发行文件的摘要，不能仅凭生成了这个 JSON 就跳过安装验收。
 
 ## 发布与更新
 
-发布流水线只接受 `main` 上 CI 成功的不可变提交。选择手动或签名模式后构建并验收同一份应用，再上传 draft Release 并回读校验资产。校验通过才公开 Release，最后生成供网站推广的发布清单。同版本 tag 或安装包不覆盖。手动模式没有应用内更新元数据，不宣称自动更新可用。
+发布流水线只接受 `main` 上 CI 成功的不可变提交，且版本必须高于已公开版本。选择分发模式后构建并验收同一份应用，再上传 draft Release 并回读校验资产。校验通过才公开 Release，最后生成供网站推广的发布清单。同版本 tag 或安装包不覆盖。未签名手动模式没有应用内更新元数据。
 
 若 build 已成功而 publish 阶段中断，只在该次 GitHub Actions 运行中**重跑失败的 publish job**，复用已验收的原始 artifact；发布任务会核对 tag、已有资产字节和状态，只补传缺失资产。候选 artifact 保留 14 天；过期后不能重新 dispatch 构建同版本来替换既有字节，应停止并人工核对 draft Release 和恢复方案。已公开的同版本 Release 只能校验，不能覆写。
 
@@ -59,7 +59,7 @@ git status --short -- apps/site/public/releases/preview-mac-arm64.json
 
 应用使用 `electron-updater` 的 GitHub provider 与打包器生成的元数据。Preview 使用 alpha 渠道，稳定渠道不自动收到 Preview，禁止降级。启动后检查新版；用户选择下载、取消或重试，下载完成后点击“重启并安装”。安装先阻止新任务、等待当前操作安全结束并保存 Agent 数据。普通退出不触发安装。
 
-首次发行没有上一公开版本，升级验收记为不适用。后续版本必须补充真实的签名包升级与数据保留证据；单元测试和未签名候选不能作为自动安装已验收的证明。
+alpha.1 没有更新源，不能从它触发应用内升级；首个带更新源版本须通过 DMG 手动替换。发布候选的 `acceptance.json` 如实记录归档安装与启动验收，升级状态为 `not-tested`，不会把归档测试冒充真实更新。后续从已安装、带更新源的旧版到新版，还必须另行记录应用内下载、确认安装、重启及持久数据保留的真实证据，才能声称升级路径已验收。
 
 ## 参考
 
