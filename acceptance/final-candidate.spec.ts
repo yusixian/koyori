@@ -73,7 +73,8 @@ test("register a project, preview and deploy a Skill, then revoke into recoverab
     await page.getByRole("button", { name: "同步与备份", exact: true }).click();
     const management = page.getByRole("region", { name: "同步与备份" });
     await management.getByRole("checkbox", { name: /fixture-deploy/ }).check();
-    const projectCard = management.getByRole("region", { name: "项目 Skills 部署" });
+    const projectCard = management.locator('details[aria-label="项目 Skills 部署"]');
+    await projectCard.locator("summary").first().click();
     const claudeTarget = await projectCard
       .getByLabel("项目目标")
       .locator("option")
@@ -131,8 +132,9 @@ test("register a project, preview and deploy a Skill, then revoke into recoverab
     expect(revokeOperation?.status).toBe("succeeded");
     expect(revokeOperation?.items[0]?.recoveryPath).toBe(recoveryPath);
     await expect(projectCard).toContainText(recoveryPath);
-    const history = management.getByRole("region", { name: "最近文件操作" });
+    const history = management.locator('details[aria-label="最近文件操作"]');
     await history.locator("summary").first().click();
+    await history.locator("summary").nth(1).click();
     await expect(history).toContainText(recoveryPath);
     expect(await readFile(join(recoveryPath, "SKILL.md"), "utf8")).toBe(skill);
     expect(await readFile(join(recoveryPath, "assets", "proof.txt"), "utf8")).toBe(

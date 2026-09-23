@@ -1,7 +1,7 @@
 .management-panel {
   display: grid;
-  gap: 20px;
-  margin-top: 18px;
+  gap: 14px;
+  margin-top: 10px;
 }
 .management-intro {
   display: flex;
@@ -21,7 +21,7 @@
   background: #fffcfa;
   border: 1px solid var(--line);
   border-radius: 12px;
-  padding: 22px;
+  padding: 18px 20px;
   min-width: 0;
 }
 .management-card .section-title {
@@ -44,6 +44,56 @@
   padding: 10px;
   background: #fff;
   color: var(--ink);
+}
+.management-field select {
+  padding-right: 35px;
+}
+.management-disclosure > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 40px;
+  cursor: pointer;
+  color: #69565e;
+}
+.management-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+.management-disclosure > summary::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  margin-left: auto;
+  border-right: 2px solid #9b6075;
+  border-bottom: 2px solid #9b6075;
+  rotate: 45deg;
+  transition: rotate 150ms ease-out;
+}
+.management-disclosure[open] > summary::after {
+  rotate: 225deg;
+}
+.management-disclosure > summary.section-title {
+  margin-bottom: 0;
+}
+.management-remote-disclosure {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 20px;
+  background: #fffcfa;
+}
+.management-remote-disclosure > summary {
+  font-size: 17px;
+  font-weight: 600;
+}
+.management-remote-disclosure > .management-card {
+  border: 0;
+  padding: 0 0 8px;
+  background: transparent;
+}
+.plan-preview {
+  scroll-margin-top: 74px;
 }
 .management-field {
   display: grid;
@@ -68,8 +118,7 @@
 }
 .management-skill input,
 .management-check input {
-  accent-color: var(--pink);
-  margin-top: 4px;
+  margin-top: 2px;
   flex-shrink: 0;
 }
 .management-skill > span {
@@ -89,7 +138,7 @@
 }
 .management-skill code {
   color: #978d90;
-  font-size: 10px;
+  font-size: 12px;
   overflow-wrap: anywhere;
   margin-top: 3px;
 }
@@ -98,7 +147,7 @@
 }
 .management-path {
   display: block;
-  font-size: 11px;
+  font-size: 12px;
   overflow-wrap: anywhere;
   margin-top: 8px;
   color: var(--muted);
@@ -129,7 +178,7 @@
 }
 .plan-item code {
   overflow-wrap: anywhere;
-  font-size: 11px;
+  font-size: 12px;
 }
 .compatibility-notice {
   border-left: 3px solid var(--pink);
@@ -164,7 +213,7 @@
 .backup-row code {
   display: block;
   overflow-wrap: anywhere;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
 }
 .backup-actions {
@@ -209,7 +258,7 @@
 .recovery-material code {
   display: block;
   overflow-wrap: anywhere;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
 }
 .operation-error {
@@ -242,6 +291,9 @@
   flex-wrap: wrap;
   gap: 12px;
 }
+.management-disclosure[open] > summary {
+  margin-bottom: 14px;
+}
 .collection-candidate {
   display: flex;
   gap: 10px;
@@ -250,7 +302,7 @@
 }
 .collection-candidate code {
   display: block;
-  font-size: 11px;
+  font-size: 12px;
   overflow-wrap: anywhere;
 }
 @media (max-width: 1080px) {

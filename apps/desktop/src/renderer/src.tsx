@@ -12,6 +12,7 @@ import {
   ArrowUpRight,
   BookOpen,
   ChevronRight,
+  Download,
   FolderPlus,
   Layers3,
   Link2,
@@ -35,7 +36,7 @@ import { ManagementPanel } from "./ManagementPanel";
 import { UpdatePanel } from "./UpdatePanel";
 import { UsagePanel } from "./UsagePanel";
 
-type Page = "skills" | "agent" | "services";
+type Page = "skills" | "agent" | "services" | "updates";
 const names = { "claude-code": "Claude Code", codex: "Codex" };
 function serviceErrorMessage(error: unknown) {
   return error instanceof Error && error.message.trim()
@@ -118,6 +119,22 @@ function App() {
   const [serviceName, setServiceName] = useState("");
   const [serviceUrl, setServiceUrl] = useState("");
   const workspaceRequestRef = useRef(0);
+  const listScrollRef = useRef(0);
+  function navigate(next: Page) {
+    setPage(next);
+    requestAnimationFrame(() => window.scrollTo(0, 0));
+  }
+  function showSkillView(next: "inventory" | "usage" | "manage") {
+    setSkillView(next);
+    requestAnimationFrame(() => window.scrollTo(0, 0));
+  }
+  useEffect(() => {
+    if (!selected || window.innerWidth > 1050) return;
+    const frame = requestAnimationFrame(() =>
+      document.querySelector(".detail")?.scrollIntoView({ block: "start" }),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [selected]);
   useEffect(() => {
     let disposed = false;
     const update = () => {
@@ -198,7 +215,7 @@ function App() {
       const windowDays = usage?.report.windowDays === 30 ? 30 : 90;
       const next = await window.koyori.prepareSkillDiscussion(skillId, windowDays);
       setPendingDiscussion(next);
-      setPage("agent");
+      navigate("agent");
     } catch {
       setError("使用证据摘要没有准备好。原有资源和会话保持不变，可以稍后重试。");
     } finally {
@@ -250,10 +267,20 @@ function App() {
   }
   function tryExample() {
     setExample(true);
-    setSkillView("inventory");
+    showSkillView("inventory");
     setSelected(null);
     setQuery("");
     setFilter("all");
+  }
+  function selectSkill(id: string) {
+    if (!selected) listScrollRef.current = window.scrollY;
+    setSelected(id);
+  }
+  function closeSkill() {
+    setSelected(null);
+    if (window.innerWidth <= 1050) {
+      requestAnimationFrame(() => window.scrollTo(0, listScrollRef.current));
+    }
   }
   function resetServiceForm() {
     setEditingService(null);
@@ -265,6 +292,9 @@ function App() {
     setServiceName(service.name);
     setServiceUrl(service.url);
     setServicesError("");
+    requestAnimationFrame(() =>
+      document.querySelector(".service-editor")?.scrollIntoView({ block: "start" }),
+    );
   }
   async function saveService(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -278,6 +308,9 @@ function App() {
       });
       setServices(next);
       resetServiceForm();
+      requestAnimationFrame(() =>
+        document.querySelector(".service-list")?.scrollIntoView({ block: "start" }),
+      );
     } catch (error) {
       setServicesError(serviceErrorMessage(error));
     } finally {
@@ -320,12 +353,12 @@ function App() {
             <small>自己的工作台</small>
           </div>
         </div>
-        <p className="nav-label">WORKSPACE</p>
+        <p className="nav-label">工作台</p>
         <nav aria-label="工作台导航">
           <button
             type="button"
             className={page === "skills" ? "nav-item active" : "nav-item"}
-            onClick={() => setPage("skills")}
+            onClick={() => navigate("skills")}
           >
             <Layers3 size={18} />
             Skills
@@ -334,7 +367,7 @@ function App() {
           <button
             type="button"
             className={page === "agent" ? "nav-item active" : "nav-item"}
-            onClick={() => setPage("agent")}
+            onClick={() => navigate("agent")}
           >
             <MessageCircle size={18} />
             Agent
@@ -342,7 +375,7 @@ function App() {
           <button
             type="button"
             className={page === "services" ? "nav-item active" : "nav-item"}
-            onClick={() => setPage("services")}
+            onClick={() => navigate("services")}
           >
             <Link2 size={18} />
             我的服务
@@ -361,7 +394,7 @@ function App() {
             type="button"
             className="nav-item"
             onClick={() => {
-              setPage("skills");
+              navigate("skills");
               setShowSources((value) => !value);
             }}
           >
@@ -379,14 +412,27 @@ function App() {
             项目与文档
             <ArrowUpRight size={13} />
           </button>
-          <UpdatePanel />
+          <button
+            type="button"
+            className={page === "updates" ? "nav-item active" : "nav-item"}
+            onClick={() => navigate("updates")}
+          >
+            <Download size={17} />
+            更新
+          </button>
         </div>
       </aside>
-      <main>
+      <main className={`main-${page}`}>
         <header className="topbar">
           <span>
             Koyori <ChevronRight size={13} />{" "}
-            {page === "skills" ? "Skills" : page === "agent" ? "Agent" : "我的服务"}
+            {page === "skills"
+              ? "Skills"
+              : page === "agent"
+                ? "Agent"
+                : page === "services"
+                  ? "我的服务"
+                  : "更新"}
           </span>
           <span className="local">
             <span />
@@ -399,13 +445,32 @@ function App() {
             onDismissDiscussion={() => setPendingDiscussion(null)}
           />
         </div>
+        {page === "updates" && <UpdatePanel />}
         {page === "skills" ? (
           <>
             <section className="page-heading">
               <div>
-                <p className="eyebrow">YOUR TOOLKIT</p>
-                <h1>每一份能力，都有来处。</h1>
-                <p>把 Skills 放在一起看清楚，再决定怎么整理。</p>
+                <p className="eyebrow">
+                  {skillView === "inventory"
+                    ? "资源清单"
+                    : skillView === "usage"
+                      ? "使用与建议"
+                      : "同步与备份"}
+                </p>
+                <h1>
+                  {skillView === "inventory"
+                    ? "每一份能力，都有来处。"
+                    : skillView === "usage"
+                      ? "看清使用，再决定去留。"
+                      : "整理前，先看清影响。"}
+                </h1>
+                <p>
+                  {skillView === "inventory"
+                    ? "把 Skills 放在一起看清楚，再决定怎么整理。"
+                    : skillView === "usage"
+                      ? "结合本机使用记录，找出值得保留或复查的 Skills。"
+                      : "选择资源，预览变化，再同步或备份。"}
+                </p>
               </div>
               <div className="heading-mark">
                 <Layers3 size={29} />
@@ -416,74 +481,72 @@ function App() {
                 <button
                   type="button"
                   aria-pressed={skillView === "inventory"}
-                  onClick={() => setSkillView("inventory")}
+                  onClick={() => showSkillView("inventory")}
                 >
                   资源清单
                 </button>
                 <button
                   type="button"
                   aria-pressed={skillView === "usage"}
-                  onClick={() => setSkillView("usage")}
+                  onClick={() => showSkillView("usage")}
                 >
                   使用与建议
                 </button>
                 <button
                   type="button"
                   aria-pressed={skillView === "manage"}
-                  onClick={() => setSkillView("manage")}
+                  onClick={() => showSkillView("manage")}
                 >
                   同步与备份
                 </button>
               </nav>
             )}
-            <div className="toolbar">
-              {skillView === "inventory" && (
-                <>
-                  <label className="search">
-                    <Search size={17} />
-                    <input
-                      aria-label="搜索 Skills"
-                      placeholder="搜索名称、描述或路径…"
-                      value={query}
-                      onChange={(event) => setQuery(event.target.value)}
-                    />
-                  </label>
-                  <select
-                    aria-label="筛选客户端"
-                    value={filter}
-                    onChange={(event) => {
-                      const value = event.target.value;
-                      if (value === "all" || value === "claude-code" || value === "codex")
-                        setFilter(value);
-                    }}
-                  >
-                    <option value="all">全部客户端</option>
-                    <option value="claude-code">Claude Code</option>
-                    <option value="codex">Codex</option>
-                  </select>
-                </>
-              )}
-              <button
-                type="button"
-                className="button"
-                disabled={busy || roots.length === 0}
-                onClick={() => {
-                  void scan();
-                }}
-              >
-                <RefreshCw size={15} className={busy ? "spinning" : ""} />
-                扫描
-              </button>
-              <button
-                type="button"
-                className="button primary"
-                disabled={busy}
-                onClick={() => setShowSources(true)}
-              >
-                <FolderPlus size={16} />
-                添加来源
-              </button>
-            </div>
+            {skillView === "inventory" && (
+              <div className="toolbar">
+                <label className="search">
+                  <Search size={17} />
+                  <input
+                    aria-label="搜索 Skills"
+                    placeholder="搜索名称、描述或路径…"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                  />
+                </label>
+                <select
+                  aria-label="筛选客户端"
+                  value={filter}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    if (value === "all" || value === "claude-code" || value === "codex")
+                      setFilter(value);
+                  }}
+                >
+                  <option value="all">全部客户端</option>
+                  <option value="claude-code">Claude Code</option>
+                  <option value="codex">Codex</option>
+                </select>
+                <button
+                  type="button"
+                  className="button"
+                  disabled={busy || roots.length === 0}
+                  onClick={() => {
+                    void scan();
+                  }}
+                >
+                  <RefreshCw size={15} className={busy ? "spinning" : ""} />
+                  扫描
+                </button>
+                <button
+                  type="button"
+                  className="button primary"
+                  disabled={busy}
+                  onClick={() => setShowSources(true)}
+                >
+                  <FolderPlus size={16} />
+                  添加来源
+                </button>
+              </div>
+            )}
             {showSources && (
               <section className="sources" aria-label="来源设置">
                 <div className="section-title">
@@ -510,85 +573,92 @@ function App() {
                     ))}
                   </details>
                 )}
-                <div className="source-controls">
-                  <label className="management-check">
-                    <input
-                      type="checkbox"
-                      checked={automaticDiscovery}
+                <div className="source-group">
+                  <h3>自动发现</h3>
+                  <div className="source-controls">
+                    <label className="management-check">
+                      <input
+                        type="checkbox"
+                        checked={automaticDiscovery}
+                        disabled={busy}
+                        onChange={(event) => {
+                          void window.koyori
+                            .setAutomaticDiscovery(event.target.checked)
+                            .then(refreshWorkspace)
+                            .catch(() => setError("无法保存自动发现设置。"));
+                        }}
+                      />
+                      启动时与运行期间自动检测
+                    </label>
+                    <button
+                      className="button"
+                      type="button"
                       disabled={busy}
-                      onChange={(event) => {
+                      onClick={() =>
                         void window.koyori
-                          .setAutomaticDiscovery(event.target.checked)
+                          .discoverSources()
                           .then(refreshWorkspace)
-                          .catch(() => setError("无法保存自动发现设置。"));
+                          .catch(() => setError("自动检测未完成。"))
+                      }
+                    >
+                      重新检测目录
+                    </button>
+                    <button
+                      className="text-button"
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        void window.koyori
+                          .discoverSources(true)
+                          .then(refreshWorkspace)
+                          .catch(() => setError("无法恢复已忽略来源。"))
+                      }
+                    >
+                      重新发现已忽略目录
+                    </button>
+                    <button
+                      className="button"
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        void window.koyori
+                          .addProject()
+                          .then(refreshWorkspace)
+                          .catch(() => setError("无法添加项目。"))
+                      }
+                    >
+                      关联项目
+                    </button>
+                  </div>
+                </div>
+                <div className="source-group">
+                  <h3>手动添加</h3>
+                  <div className="source-controls">
+                    <select
+                      aria-label="添加来源的客户端"
+                      value={client}
+                      onChange={(event) => {
+                        if (event.target.value === "claude-code" || event.target.value === "codex")
+                          setClient(event.target.value);
                       }}
-                    />
-                    启动时与运行期间自动检测
-                  </label>
-                  <button
-                    className="button"
-                    type="button"
-                    disabled={busy}
-                    onClick={() =>
-                      void window.koyori
-                        .discoverSources()
-                        .then(refreshWorkspace)
-                        .catch(() => setError("自动检测未完成。"))
-                    }
-                  >
-                    重新检测目录
-                  </button>
-                  <button
-                    className="text-button"
-                    type="button"
-                    disabled={busy}
-                    onClick={() =>
-                      void window.koyori
-                        .discoverSources(true)
-                        .then(refreshWorkspace)
-                        .catch(() => setError("无法恢复已忽略来源。"))
-                    }
-                  >
-                    重新发现已忽略目录
-                  </button>
-                  <button
-                    className="button"
-                    type="button"
-                    disabled={busy}
-                    onClick={() =>
-                      void window.koyori
-                        .addProject()
-                        .then(refreshWorkspace)
-                        .catch(() => setError("无法添加项目。"))
-                    }
-                  >
-                    关联项目
-                  </button>
+                    >
+                      <option value="claude-code">Claude Code</option>
+                      <option value="codex">Codex</option>
+                    </select>
+                    <button
+                      type="button"
+                      className="button primary"
+                      disabled={busy}
+                      onClick={() => {
+                        void addSource();
+                      }}
+                    >
+                      <FolderPlus size={15} />
+                      选择目录
+                    </button>
+                  </div>
                 </div>
-                <div className="source-controls">
-                  <select
-                    aria-label="添加来源的客户端"
-                    value={client}
-                    onChange={(event) => {
-                      if (event.target.value === "claude-code" || event.target.value === "codex")
-                        setClient(event.target.value);
-                    }}
-                  >
-                    <option value="claude-code">Claude Code</option>
-                    <option value="codex">Codex</option>
-                  </select>
-                  <button
-                    type="button"
-                    className="button primary"
-                    disabled={busy}
-                    onClick={() => {
-                      void addSource();
-                    }}
-                  >
-                    <FolderPlus size={15} />
-                    选择目录
-                  </button>
-                </div>
+                {roots.length > 0 && <h3 className="source-list-title">已连接来源</h3>}
                 {roots.map((root) => (
                   <div className="source-row" key={root.id}>
                     <div>
@@ -671,7 +741,7 @@ function App() {
                           type="button"
                           key={item.id}
                           className={`skill-row ${selected === item.id ? "selected" : ""}`}
-                          onClick={() => setSelected(item.id)}
+                          onClick={() => selectSkill(item.id)}
                         >
                           <span className="skill-symbol">
                             <Layers3 size={20} />
@@ -748,13 +818,13 @@ function App() {
                         ? undefined
                         : usage?.report.skills.find((entry) => entry.skillId === detail.id)
                     }
-                    close={() => setSelected(null)}
+                    close={closeSkill}
                     manage={
                       example
                         ? undefined
                         : () => {
                             setManagementSkill(detail.id);
-                            setSkillView("manage");
+                            showSkillView("manage");
                           }
                     }
                     discuss={
@@ -766,7 +836,7 @@ function App() {
                     }
                     discussionBusy={discussionBusyId !== null}
                     pendingDiscussionName={pendingDiscussion?.skillName}
-                    goToAgent={() => setPage("agent")}
+                    goToAgent={() => navigate("agent")}
                   />
                 )}
               </div>
@@ -814,7 +884,7 @@ function App() {
           <section className="services-page">
             <header className="services-heading">
               <div>
-                <p className="eyebrow">YOUR CONNECTIONS</p>
+                <p className="eyebrow">我的服务</p>
                 <h1>把常用入口放在手边。</h1>
                 <p>登记自己的服务地址，需要时由系统默认浏览器打开。</p>
               </div>
@@ -828,10 +898,76 @@ function App() {
               </div>
             )}
             <div className="services-layout">
+              <section className="service-list" aria-labelledby="service-list-heading">
+                <div className="service-section-heading">
+                  <div>
+                    <p className="eyebrow">已保存</p>
+                    <h2 id="service-list-heading">我的入口</h2>
+                  </div>
+                  <span className="service-count">{services.length} 项</span>
+                </div>
+                {servicesLoading ? (
+                  <p className="service-empty">正在读取本机服务列表…</p>
+                ) : services.length === 0 ? (
+                  <div className="service-empty">
+                    <Link2 size={20} />
+                    <strong>还没有服务入口</strong>
+                    <span>添加一个你常用的 HTTPS 服务，或本机开发服务。</span>
+                    <button
+                      type="button"
+                      className="button"
+                      onClick={() =>
+                        document
+                          .querySelector(".service-editor")
+                          ?.scrollIntoView({ block: "start" })
+                      }
+                    >
+                      添加服务入口
+                    </button>
+                  </div>
+                ) : (
+                  <ul className="service-items">
+                    {services.map((service) => (
+                      <li className="service-card" key={service.id}>
+                        <div className="service-card-copy">
+                          <strong>{service.name}</strong>
+                          <code title={service.url}>{service.url}</code>
+                        </div>
+                        <div className="service-actions">
+                          <button
+                            type="button"
+                            className="button primary"
+                            onClick={() => void openService(service)}
+                            disabled={servicesBusy}
+                          >
+                            打开 <ArrowUpRight size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            className="button"
+                            onClick={() => editService(service)}
+                            disabled={servicesBusy}
+                          >
+                            编辑
+                          </button>
+                          <button
+                            type="button"
+                            className="text-button service-remove"
+                            onClick={() => void removeService(service)}
+                            disabled={servicesBusy}
+                          >
+                            移除
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
               <section className="service-editor" aria-labelledby="service-form-heading">
                 <div className="service-section-heading">
                   <div>
-                    <p className="eyebrow">LOCAL BOOKMARKS</p>
+                    <p className="eyebrow">仅存本机</p>
                     <h2 id="service-form-heading">
                       {editingService ? "编辑服务入口" : "添加服务入口"}
                     </h2>
@@ -878,61 +1014,6 @@ function App() {
                   </button>
                 </form>
               </section>
-              <section className="service-list" aria-labelledby="service-list-heading">
-                <div className="service-section-heading">
-                  <div>
-                    <p className="eyebrow">SAVED HERE</p>
-                    <h2 id="service-list-heading">我的入口</h2>
-                  </div>
-                  <span className="service-count">{services.length} 项</span>
-                </div>
-                {servicesLoading ? (
-                  <p className="service-empty">正在读取本机服务列表…</p>
-                ) : services.length === 0 ? (
-                  <div className="service-empty">
-                    <Link2 size={20} />
-                    <strong>还没有服务入口</strong>
-                    <span>添加一个你常用的 HTTPS 服务，或本机开发服务。</span>
-                  </div>
-                ) : (
-                  <ul className="service-items">
-                    {services.map((service) => (
-                      <li className="service-card" key={service.id}>
-                        <div className="service-card-copy">
-                          <strong>{service.name}</strong>
-                          <code title={service.url}>{service.url}</code>
-                        </div>
-                        <div className="service-actions">
-                          <button
-                            type="button"
-                            className="button primary"
-                            onClick={() => void openService(service)}
-                            disabled={servicesBusy}
-                          >
-                            打开 <ArrowUpRight size={14} />
-                          </button>
-                          <button
-                            type="button"
-                            className="button"
-                            onClick={() => editService(service)}
-                            disabled={servicesBusy}
-                          >
-                            编辑
-                          </button>
-                          <button
-                            type="button"
-                            className="text-button service-remove"
-                            onClick={() => void removeService(service)}
-                            disabled={servicesBusy}
-                          >
-                            移除
-                          </button>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
             </div>
             <p className="service-footnote">
               服务入口只保存在本机。保存不会访问地址；点击“打开”后，链接会在系统默认浏览器中打开。
@@ -967,9 +1048,10 @@ function Detail({
   return (
     <aside className="detail" aria-label="Skill 详情">
       <div className="section-title">
-        <p className="eyebrow">SKILL DETAIL</p>
-        <button type="button" className="icon-button" aria-label="关闭详情" onClick={close}>
-          <X size={17} />
+        <p className="eyebrow">资源详情</p>
+        <button type="button" className="detail-close" onClick={close}>
+          <ChevronRight size={16} aria-hidden="true" />
+          返回清单
         </button>
       </div>
       <h2>{skill.name}</h2>

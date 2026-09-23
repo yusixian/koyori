@@ -69,6 +69,7 @@ test("agent conversation streams, cancels, persists and isolates connections", a
     expect(
       await page.evaluate(async () => (await window.koyori.getAgent()).secureStorageAvailable),
     ).toBeNull();
+    await page.locator(".agent-heading").getByRole("button", { name: "连接设置" }).click();
     await page.getByLabel("连接名称", { exact: true }).fill("合成连接 A");
     await page.getByLabel("服务地址", { exact: true }).fill(baseUrl);
     await page.getByLabel("模型", { exact: true }).fill("synthetic-model");

@@ -104,6 +104,9 @@ export function AgentPanel({ pendingDiscussion, onDismissDiscussion }: AgentPane
   const [preferenceNotice, setPreferenceNotice] = useState("");
   const requestRef = useRef(0);
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
+  const followMessagesRef = useRef(true);
+  const lastVisibleSessionRef = useRef<string | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const deleteCancelRef = useRef<HTMLButtonElement>(null);
 
@@ -149,6 +152,21 @@ export function AgentPanel({ pendingDiscussion, onDismissDiscussion }: AgentPane
     () => view?.sessions.find((session) => session.id === view.selectedSessionId) ?? null,
     [view],
   );
+  useEffect(() => {
+    const node = messagesRef.current;
+    if (!node) return;
+    if (lastVisibleSessionRef.current !== selectedSession?.id) {
+      lastVisibleSessionRef.current = selectedSession?.id ?? null;
+      followMessagesRef.current = true;
+    }
+    if (followMessagesRef.current) node.scrollTop = node.scrollHeight;
+  }, [selectedSession]);
+  useEffect(() => {
+    const node = composerRef.current;
+    if (!node) return;
+    node.style.height = "auto";
+    node.style.height = draft ? `${Math.min(node.scrollHeight, 180)}px` : "auto";
+  }, [draft]);
   const sessionIsCurrent = Boolean(
     view?.connection && selectedSession?.connectionId === view.connection.id,
   );
@@ -212,6 +230,9 @@ export function AgentPanel({ pendingDiscussion, onDismissDiscussion }: AgentPane
       apiKey: "",
     });
     setShowConnection(true);
+    requestAnimationFrame(() =>
+      document.querySelector(".agent-connection-editor")?.scrollIntoView({ block: "start" }),
+    );
   }
 
   async function saveConnection(event: React.FormEvent<HTMLFormElement>) {
@@ -433,7 +454,7 @@ export function AgentPanel({ pendingDiscussion, onDismissDiscussion }: AgentPane
     <section className="agent-panel" aria-labelledby="agent-title">
       <header className="agent-heading">
         <div>
-          <p className="agent-kicker">PERSONAL AGENT</p>
+          <p className="agent-kicker">文字对话</p>
           <h1 id="agent-title">一处安静的文字对话。</h1>
           <p>消息只会在你按下发送后交给当前服务；仅主动加入的摘要会随文字发送。</p>
         </div>
@@ -467,26 +488,24 @@ export function AgentPanel({ pendingDiscussion, onDismissDiscussion }: AgentPane
         </div>
       )}
 
-      {(showConnection || !view.connection) && (
+      {showConnection && (
         <section className="agent-connection-editor" aria-labelledby="agent-connection-title">
           <div className="agent-section-heading">
             <div>
-              <p className="agent-kicker">OPENAI-COMPATIBLE</p>
+              <p className="agent-kicker">兼容 OpenAI 接口</p>
               <h2 id="agent-connection-title">
                 {view.connection ? "更改当前连接" : "配置文字模型"}
               </h2>
             </div>
-            {view.connection && (
-              <button
-                type="button"
-                className="agent-icon-button"
-                aria-label="关闭连接设置"
-                disabled={busy === "connection"}
-                onClick={() => setShowConnection(false)}
-              >
-                <X size={17} />
-              </button>
-            )}
+            <button
+              type="button"
+              className="agent-icon-button"
+              aria-label="关闭连接设置"
+              disabled={busy === "connection"}
+              onClick={() => setShowConnection(false)}
+            >
+              <X size={17} />
+            </button>
           </div>
           <p className="agent-connection-note">
             保存只记录设置，不会探测服务或调用模型。更改连接后会新建会话；已有会话仍可查看，但不会发送给新目标。
@@ -612,7 +631,7 @@ export function AgentPanel({ pendingDiscussion, onDismissDiscussion }: AgentPane
         <section className="agent-discussion-preview" aria-label="Skill 讨论摘要">
           <div className="agent-discussion-heading">
             <div>
-              <p className="agent-kicker">LOCAL PREVIEW</p>
+              <p className="agent-kicker">本机预览</p>
               <h2>{pendingDiscussion.skillName} · 使用证据摘要</h2>
             </div>
             <span>近 {pendingDiscussion.windowDays} 天</span>
@@ -670,7 +689,7 @@ export function AgentPanel({ pendingDiscussion, onDismissDiscussion }: AgentPane
         <section className="agent-preference-card" aria-label="Skill 本地操作卡">
           <div className="agent-discussion-heading">
             <div>
-              <p className="agent-kicker">LOCAL ACTION</p>
+              <p className="agent-kicker">本机操作</p>
               <h2>{actionableSkill.skillName} · 整理偏好</h2>
             </div>
           </div>
@@ -736,7 +755,7 @@ export function AgentPanel({ pendingDiscussion, onDismissDiscussion }: AgentPane
         <aside className="agent-sessions" aria-label="Agent 会话">
           <div className="agent-section-heading">
             <div>
-              <p className="agent-kicker">SESSIONS</p>
+              <p className="agent-kicker">会话列表</p>
               <h2>会话</h2>
             </div>
             <button
@@ -907,7 +926,16 @@ export function AgentPanel({ pendingDiscussion, onDismissDiscussion }: AgentPane
                 {!sessionIsCurrent && <span className="agent-readonly-badge">历史只读</span>}
               </header>
 
-              <div className="agent-messages" aria-live="polite">
+              <div
+                className="agent-messages"
+                aria-live="polite"
+                ref={messagesRef}
+                onScroll={(event) => {
+                  const node = event.currentTarget;
+                  followMessagesRef.current =
+                    node.scrollHeight - node.scrollTop - node.clientHeight < 64;
+                }}
+              >
                 {selectedSession.messages.length === 0 ? (
                   <div className="agent-message-empty">
                     <Sparkles size={19} />
