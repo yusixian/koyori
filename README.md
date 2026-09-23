@@ -74,6 +74,7 @@ pnpm dev
 - [架构与数据](docs/architecture.md)：核心进程、领域模型、SQLite、缓存与恢复。
 - [路线图与分发](docs/roadmap.md)：官网、反馈、更新、商业化预留。
 - [发布与开源基线](docs/design/release-foundation.md)：首版版本化、Dokploy 文档站、安装包与验收发布约定。
+- [macOS 签名配置](docs/release-signing.md)：Developer ID、公证凭据、GitHub 发布环境与 Preview 更新流程。
 - [研究依据](docs/research.md)：官方资料、Lody 和现成工具的参考边界。
 - [品牌说明](brand/README.md) · [工程约定](AGENTS.md)。
 

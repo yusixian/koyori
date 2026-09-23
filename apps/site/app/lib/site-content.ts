@@ -8,7 +8,7 @@ export const searchablePages = [
   {
     title: "安装",
     href: "/docs/installation",
-    description: "当前安装状态，以及首个安装包发布后的核验原则。",
+    description: "查看公开 Preview 的安装、应用内更新和签名状态。",
     keywords: "安装 macOS 下载 安装包 签名 公证",
   },
   {
@@ -44,13 +44,13 @@ export const searchablePages = [
   {
     title: "下载",
     href: "/download",
-    description: "查看发布状态；当前没有可下载的 Koyori 安装包。",
-    keywords: "下载 release preview stable 版本",
+    description: "查看公开 Preview 的真实下载清单；清单缺失时明确显示未发布。",
+    keywords: "下载 release preview stable 版本 DMG SHA-256 更新",
   },
   {
     title: "更新记录",
     href: "/changelog",
-    description: "查看未发布的工程进展；当前没有公开版本记录。",
-    keywords: "更新 changelog release 未发布",
+    description: "查看公开版本对应的更新记录，或阅读当前未发布草稿。",
+    keywords: "更新 changelog release 未发布 Preview Stable",
   },
 ] as const;

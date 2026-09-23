@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "sync:release": "node scripts/sync-release.mjs",
+    "sync:release": "tsx scripts/sync-release.ts",
     "dev": "pnpm sync:release && react-router dev --port 5174 --strictPort",
     "build": "pnpm sync:release && react-router build",
     "typecheck": "pnpm sync:release && react-router typegen && tsc --noEmit"
@@ -17,7 +17,8 @@
     "isbot": "5.2.2",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "react-router": "7.18.2"
+    "react-router": "7.18.2",
+    "@koyori/core": "workspace:*"
   },
   "devDependencies": {
     "@react-router/dev": "7.18.2",

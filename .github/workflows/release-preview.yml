@@ -1,0 +1,248 @@
+name: Release signed preview
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: preview-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and accept signed candidate
+    runs-on: macos-15
+    timeout-minutes: 50
+    environment: preview-release
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      version: ${{ steps.prepare.outputs.version }}
+      tag: ${{ steps.prepare.outputs.tag }}
+      notes: ${{ steps.prepare.outputs.notes }}
+    steps:
+      - name: Check out the dispatched commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Verify trusted main commit and CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          main_sha=$(gh api "repos/$GITHUB_REPOSITORY/branches/main" --jq '.commit.sha')
+          test "$main_sha" = "$GITHUB_SHA"
+          successful_runs=$(gh api \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?branch=main&event=push&status=success&head_sha=$GITHUB_SHA&per_page=100" \
+            --jq '[.workflow_runs[] | select(.head_sha == env.GITHUB_SHA and .head_branch == "main" and .event == "push" and .conclusion == "success")] | length')
+          test "$successful_runs" -gt 0
+
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test release validation helper
+        run: node --test scripts/release-preview.test.mjs
+
+      - name: Prepare release identity
+        id: prepare
+        run: >-
+          node scripts/release-preview.mjs prepare
+          --root .
+          --commit "$GITHUB_SHA"
+          --output "$GITHUB_OUTPUT"
+
+      - name: Require a first, unused public version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.prepare.outputs.tag }}
+        run: |
+          set -euo pipefail
+          published_releases=$(gh release list --exclude-drafts --limit 1 --json tagName --jq 'length')
+          test "$published_releases" -eq 0
+          if git ls-remote --exit-code --refs origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "The release tag already exists." >&2
+            exit 1
+          fi
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "The release already exists." >&2
+            exit 1
+          fi
+
+      - name: Build signed and notarized candidate
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          set -euo pipefail
+          export APPLE_API_KEY="$RUNNER_TEMP/koyori-notary-key.p8"
+          trap 'rm -f "$APPLE_API_KEY"' EXIT
+          node -e 'const fs = require("node:fs"); const value = process.env.APPLE_API_KEY_P8; if (!value) throw new Error("APPLE_API_KEY_P8 is missing."); fs.writeFileSync(process.env.APPLE_API_KEY, value, { mode: 0o600 });'
+          unset APPLE_API_KEY_P8
+          KOYORI_SIGNED_RELEASE=1 pnpm package:mac
+
+      - name: Accept the packaged candidate
+        env:
+          KOYORI_EXECUTABLE: ${{ github.workspace }}/artifacts/mac-arm64/Koyori.app/Contents/MacOS/Koyori
+        run: |
+          set -euo pipefail
+          pnpm test:desktop
+          node scripts/release-preview.mjs record-acceptance \
+            --root . \
+            --commit "$GITHUB_SHA" \
+            --candidate artifacts/candidate.json \
+            --output artifacts/acceptance.json
+
+      - name: Upload the accepted candidate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: koyori-preview-${{ steps.prepare.outputs.version }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            artifacts/candidate.json
+            artifacts/acceptance.json
+            artifacts/Koyori-${{ steps.prepare.outputs.version }}-arm64.dmg
+            artifacts/Koyori-${{ steps.prepare.outputs.version }}-arm64.dmg.blockmap
+            artifacts/Koyori-${{ steps.prepare.outputs.version }}-arm64.zip
+            artifacts/Koyori-${{ steps.prepare.outputs.version }}-arm64.zip.blockmap
+            artifacts/alpha-mac.yml
+
+  publish:
+    name: Verify and publish accepted candidate
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: preview-release
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Check out the accepted commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download the accepted candidate
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: koyori-preview-${{ needs.build.outputs.version }}
+          path: release-input
+
+      - name: Verify publish input
+        id: verify
+        env:
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+        run: >-
+          node scripts/release-preview.mjs verify-publish
+          --root .
+          --directory release-input
+          --commit "$GITHUB_SHA"
+          --version "$RELEASE_VERSION"
+          --output "$GITHUB_OUTPUT"
+
+      - name: Recheck release preconditions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.verify.outputs.tag }}
+        run: |
+          set -euo pipefail
+          published_releases=$(gh release list --exclude-drafts --limit 1 --json tagName --jq 'length')
+          test "$published_releases" -eq 0
+          if git ls-remote --exit-code --refs origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "The release tag already exists." >&2
+            exit 1
+          fi
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "The release already exists." >&2
+            exit 1
+          fi
+
+      - name: Create draft prerelease from accepted files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.verify.outputs.tag }}
+          RELEASE_NOTES: ${{ steps.verify.outputs.notes }}
+          RELEASE_VERSION: ${{ steps.verify.outputs.version }}
+        run: |
+          set -euo pipefail
+          assets=(
+            release-input/candidate.json
+            release-input/acceptance.json
+            "release-input/Koyori-$RELEASE_VERSION-arm64.dmg"
+            "release-input/Koyori-$RELEASE_VERSION-arm64.dmg.blockmap"
+            "release-input/Koyori-$RELEASE_VERSION-arm64.zip"
+            "release-input/Koyori-$RELEASE_VERSION-arm64.zip.blockmap"
+            release-input/alpha-mac.yml
+          )
+          gh release create "$RELEASE_TAG" "${assets[@]}" \
+            --target "$GITHUB_SHA" \
+            --draft \
+            --prerelease \
+            --title "Koyori $RELEASE_TAG Preview" \
+            --notes-file "$RELEASE_NOTES"
+
+      - name: Verify uploaded draft assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.verify.outputs.tag }}
+        run: |
+          set -euo pipefail
+          test "$(gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft')" = "true"
+          mkdir remote-assets
+          gh release download "$RELEASE_TAG" --dir remote-assets
+          node scripts/release-preview.mjs verify-remote \
+            --local release-input \
+            --remote remote-assets
+
+      - name: Publish the verified prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.verify.outputs.tag }}
+        run: gh release edit "$RELEASE_TAG" --draft=false --prerelease=true
+
+      - name: Confirm published commit and generate catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.verify.outputs.tag }}
+        run: |
+          set -euo pipefail
+          test "$(gh release view "$RELEASE_TAG" --json isDraft,isPrerelease --jq '.isDraft == false and .isPrerelease == true')" = "true"
+          release_commit=$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq '.sha')
+          test "$release_commit" = "$GITHUB_SHA"
+          published_at=$(gh release view "$RELEASE_TAG" --json publishedAt --jq '.publishedAt')
+          node scripts/release-preview.mjs catalog \
+            --candidate release-input/candidate.json \
+            --publishedAt "$published_at" \
+            --output release-output/preview-mac-arm64.json
+
+      - name: Upload website catalog for review
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: koyori-preview-catalog-${{ steps.verify.outputs.version }}
+          if-no-files-found: error
+          retention-days: 14
+          path: release-output/preview-mac-arm64.json

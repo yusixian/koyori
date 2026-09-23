@@ -2,6 +2,16 @@ import { contextBridge, ipcRenderer } from "electron";
 import type { KoyoriBridge } from "../bridge";
 
 const bridge: KoyoriBridge = {
+  getUpdate: () => ipcRenderer.invoke("update:get"),
+  checkForUpdate: () => ipcRenderer.invoke("update:check"),
+  downloadUpdate: () => ipcRenderer.invoke("update:download"),
+  cancelUpdateDownload: () => ipcRenderer.invoke("update:download:cancel"),
+  installUpdate: () => ipcRenderer.invoke("update:install"),
+  onUpdateChanged: (listener) => {
+    const notify = () => listener();
+    ipcRenderer.on("update:changed", notify);
+    return () => ipcRenderer.removeListener("update:changed", notify);
+  },
   getAgent: () => ipcRenderer.invoke("agent:get"),
   saveAgentConnection: (input) => ipcRenderer.invoke("agent:connection:save", input),
   disconnectAgent: () => ipcRenderer.invoke("agent:disconnect"),

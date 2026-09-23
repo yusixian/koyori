@@ -4,7 +4,11 @@
 
 ## 当前迭代
 
-本轮在已合并的 Skills 管理流程之上，加入个人 Agent 的首个开发切片：使用自配 OpenAI-compatible Chat Completions 连接进行本地文字会话，并保留连接隔离、取消、错误和未知用量状态。
+当前优先准备 `0.1.0-alpha.1` 签名 Preview 与应用内更新：桌面加入检查、下载进度、取消、重试和安全重启安装；签名构建与发布入口正在收尾。macOS 证书及公证凭据未就绪，尚未发布下载清单或公开安装包；配置指南见 [macOS 签名与发布](release-signing.md)。
+
+此前单 Skill 讨论已随 [PR #5](https://github.com/yusixian/koyori/pull/5) 合并，main `1b3a0e76974d21c7f091966755b7472ac819d831` 的 [CI 35712164007](https://github.com/yusixian/koyori/actions/runs/35712164007) 通过；该提交已于上轮在 Dokploy 核验部署，公开 HTTPS 的指南、下载、搜索等路由检查通过。下列旧版本记录保留为历史证据。
+
+个人 Agent 支持自配 OpenAI-compatible Chat Completions 连接进行本地文字会话，并保留连接隔离、取消、错误和未知用量状态。
 
 Skills 管理切片已经通过独立 review、CI 和真实 Electron 验收，[PR #1](https://github.com/yusixian/koyori/pull/1) 与文档跟进的 [PR #2](https://github.com/yusixian/koyori/pull/2) 已合并。文档站已部署到独立 Dokploy 应用，正式域名的 DNS/HTTPS 已实测；当前已核验的文档部署 commit 为 `e128a9392c22701ccb73817287a8733d11d295db`，Agent 文字对话指南已上线。本轮 Agent 文字基础已通过真实 Electron 与 CI，[PR #3](https://github.com/yusixian/koyori/pull/3) 已合并；单 Skill 讨论已实现，独立数据边界 review 未发现 P1/P2；本轮 CI、合并和讨论指南部署的交付记录见 [PR #5](https://github.com/yusixian/koyori/pull/5)。完整 0.1 还包括 Git 备份真实账号验收、个人 Bot 接入和公开分发。
 

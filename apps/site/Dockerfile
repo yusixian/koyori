@@ -5,9 +5,11 @@ RUN corepack enable && corepack prepare pnpm@10.28.2 --activate
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/site/package.json apps/site/package.json
+COPY packages/core/package.json packages/core/package.json
 RUN pnpm install --frozen-lockfile --filter @koyori/site...
 
 COPY apps/site apps/site
+COPY packages/core packages/core
 COPY brand/logo.png brand/logo.png
 COPY docs/releases docs/releases
 

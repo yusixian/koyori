@@ -83,7 +83,44 @@ export interface ManagementView {
   lastResult: string | null;
 }
 
+export type UpdateStatus =
+  | "idle"
+  | "checking"
+  | "current"
+  | "available"
+  | "downloading"
+  | "cancelling"
+  | "cancelled"
+  | "ready"
+  | "installing"
+  | "download-error"
+  | "install-error"
+  | "unsupported"
+  | "error";
+
+export interface UpdateView {
+  status: UpdateStatus;
+  currentVersion: string;
+  channel: "preview" | "stable";
+  checkedAt: string | null;
+  latestVersion: string | null;
+  publishedAt: string | null;
+  progress: {
+    percent: number;
+    transferred: number;
+    total: number;
+    bytesPerSecond: number;
+  } | null;
+  message: string | null;
+}
+
 export interface KoyoriBridge {
+  getUpdate(): Promise<UpdateView>;
+  checkForUpdate(): Promise<UpdateView>;
+  downloadUpdate(): Promise<UpdateView>;
+  cancelUpdateDownload(): Promise<UpdateView>;
+  installUpdate(): Promise<UpdateView>;
+  onUpdateChanged(listener: () => void): () => void;
   getAgent(): Promise<AgentView>;
   saveAgentConnection(input: AgentConnectionInput): Promise<AgentView>;
   disconnectAgent(): Promise<AgentView>;

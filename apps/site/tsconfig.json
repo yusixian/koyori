@@ -3,6 +3,7 @@
     ".react-router/types/**/*",
     "app/**/*",
     "content/**/*",
+    "scripts/**/*.ts",
     "react-router.config.ts",
     "vite.config.ts"
   ],

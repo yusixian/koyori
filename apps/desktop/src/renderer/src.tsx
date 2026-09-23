@@ -31,6 +31,7 @@ import "./style.css";
 import { AgentPanel } from "./AgentPanel";
 import { CollectionPanel } from "./CollectionPanel";
 import { ManagementPanel } from "./ManagementPanel";
+import { UpdatePanel } from "./UpdatePanel";
 import { UsagePanel } from "./UsagePanel";
 
 type Page = "skills" | "agent" | "services";
@@ -293,10 +294,7 @@ function App() {
             项目与文档
             <ArrowUpRight size={13} />
           </button>
-          <div className="version">
-            <span>v{__APP_VERSION__}</span>
-            <span>开发候选</span>
-          </div>
+          <UpdatePanel />
         </div>
       </aside>
       <main>

@@ -2,6 +2,7 @@ import type { MetaFunction } from "react-router";
 import { Link } from "react-router";
 import logoUrl from "../../../../brand/logo.png";
 import { PageShell } from "../components/page-shell";
+import { releaseManifest } from "../generated/release";
 import { productVersion } from "../lib/version";
 
 export const meta: MetaFunction = () => [
@@ -19,6 +20,8 @@ const principles = [
 ];
 
 export default function HomePage() {
+  const publicRelease = releaseManifest;
+
   return (
     <PageShell>
       <section className="hero section-wrap">
@@ -29,7 +32,8 @@ export default function HomePage() {
             <span>整理成自己的工作台。</span>
           </h1>
           <p className="hero-lead">
-            Koyori 从 Skills 与个人 Agent 起步，面向 macOS，帮助你自动发现本机能力、看清使用证据，再安全同步与恢复。
+            Koyori 从 Skills 与个人 Agent 起步，面向
+            macOS，帮助你自动发现本机能力、看清使用证据，再安全同步与恢复。
           </p>
           <div className="hero-actions">
             <Link className="button button-primary" to="/docs">
@@ -40,7 +44,10 @@ export default function HomePage() {
             </Link>
           </div>
           <p className="release-note">
-            <span className="status-dot" /> 开发候选 {productVersion} · 尚未发布安装包
+            <span className="status-dot" />
+            {publicRelease
+              ? `${publicRelease.channel === "preview" ? "Preview" : "Stable"} v${publicRelease.version} · 可下载`
+              : `开发候选 ${productVersion} · 尚未发布安装包`}
           </p>
         </div>
         <div className="hero-art" aria-label="Koyori 品牌角色">
@@ -60,7 +67,13 @@ export default function HomePage() {
             <h2 id="now-title">Skills 自用闭环正在成形</h2>
           </div>
           <p>
-            开发版已支持自动发现 Claude Code 与 Codex Skills、完整目录同步和本地恢复快照；Claude Code 使用证据可在开启后持续更新。个人 Agent 已支持自配模型文字会话和流式回复，安装包尚未公开发行。
+            开发版已支持自动发现 Claude Code 与 Codex Skills、完整目录同步和本地恢复快照；Claude
+            Code 使用证据可在开启后持续更新。个人 Agent 已支持自配模型文字会话和流式回复，
+            {publicRelease
+              ? publicRelease.installation === "automatic"
+                ? "当前 Preview 支持应用内检查、下载和用户确认后的重启安装。"
+                : "当前 Preview 可下载并手动更新。"
+              : "安装包尚未公开发行。"}
           </p>
         </div>
       </section>
@@ -88,10 +101,18 @@ export default function HomePage() {
           <p>从自动发现开始，先核对同步计划和兼容提示，再用本地快照保护每次替换。</p>
         </div>
         <div className="route-links">
-          <Link to="/docs/skills-management">管理 Skills <span>↗</span></Link>
-          <Link to="/docs/skill-usage">查看使用证据 <span>↗</span></Link>
-          <Link to="/docs/agent">连接模型 <span>↗</span></Link>
-          <Link to="/docs/security">安全与数据 <span>↗</span></Link>
+          <Link to="/docs/skills-management">
+            管理 Skills <span>↗</span>
+          </Link>
+          <Link to="/docs/skill-usage">
+            查看使用证据 <span>↗</span>
+          </Link>
+          <Link to="/docs/agent">
+            连接模型 <span>↗</span>
+          </Link>
+          <Link to="/docs/security">
+            安全与数据 <span>↗</span>
+          </Link>
         </div>
       </section>
     </PageShell>

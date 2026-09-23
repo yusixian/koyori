@@ -83,6 +83,7 @@ test("selected roots, preview, persistence and no source writes", async () => {
   const args = [
     ...(process.env.KOYORI_EXECUTABLE ? [] : [resolve("apps/desktop/out/main/index.js")]),
     `--user-data-dir=${userData}`,
+    "--disable-auto-update-check",
   ];
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) {
@@ -102,6 +103,14 @@ test("selected roots, preview, persistence and no source writes", async () => {
     page.on("pageerror", (error) => errors.push(error.message));
     await expect(page.getByRole("heading", { name: "每一份能力，都有来处。" })).toBeVisible();
     expect(page.url()).toBe("koyori://app/index.html");
+    const update = await page.evaluate(() => window.koyori.getUpdate());
+    const product = JSON.parse(await readFile(resolve("package.json"), "utf8"));
+    expect(update.currentVersion).toBe(product.version);
+    await page.locator(".update-panel > summary").click();
+    await expect(page.locator(".update-status")).toContainText(
+      update.status === "unsupported" ? "更新仅在已配置更新源" : "尚未检查更新",
+    );
+    await page.locator(".update-panel > summary").click();
     await page.getByRole("button", { name: /先看看示例/ }).click();
     await expect(page.getByText("示例模式 · 以下资源为合成示例，没有读取本机文件。")).toBeVisible();
     await page.getByRole("button", { name: "退出示例" }).click();
@@ -234,6 +243,7 @@ test("automatic discovery, opt-in evidence, complete-folder sync and restore pre
   const args = [
     ...(process.env.KOYORI_EXECUTABLE ? [] : [resolve("apps/desktop/out/main/index.js")]),
     `--user-data-dir=${userData}`,
+    "--disable-auto-update-check",
   ];
   let app = await electron.launch({ executablePath, args, env });
   try {

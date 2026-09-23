@@ -46,7 +46,13 @@ Skills 提供“资源清单 / 使用与建议”视图。Claude Code 历史目�
 
 已有 macOS Electron 工作台、共享核心与 CLI、独立文档站和隔离 CI；唯一产品版本、本地 DMG/ZIP 候选、摘要与打包后验收入口已经建立。文档站已配置独立 Dokploy 应用，正式域名 DNS/HTTPS 已实测，具体部署版本与验收单独记录。
 
-个人 Bot 服务、桌面通道/API、工具操作卡、语音和自动更新尚未接入；文档站部署与桌面应用发行分别验收。安装包仍是本地未签名候选；完整 0.1 的剩余范围与验证分层见 [实施状态](https://github.com/yusixian/koyori/blob/main/docs/implementation-status.md)。
+个人 Bot 服务、桌面通道/API、工具操作卡和语音尚未接入；文档站部署与桌面应用发行分别验收。签名、公证、安装包和更新流程仍需真实产物验证；完整 0.1 的剩余范围与验证分层见 [实施状态](https://github.com/yusixian/koyori/blob/main/docs/implementation-status.md)。
+
+## Preview 安装包与更新
+
+- 桌面应用接入用户控制的更新检查、下载和重启安装；真实更新使用标准更新元数据，站点的 macOS arm64 Preview JSON 只作为公开版本目录。
+- 下载页只读取经过核心清单校验的版本、发布时间、最低系统版本、签名状态、安装方式、SHA-256、文件大小和 GitHub Release 地址；没有清单时保持未发布状态。
+- 只有签名、公证、产物上传、安装和更新验证完成后，才生成公开清单并显示为可下载版本。
 
 ## Git 远端快照
 
