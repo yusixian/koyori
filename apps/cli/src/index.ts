@@ -138,7 +138,18 @@ export async function runCli(
     stderr: process.stderr,
   },
 ): Promise<number> {
-  if (["discover", "sync", "backup", "backups", "restore"].includes(args[0] ?? ""))
+  if (
+    [
+      "discover",
+      "sync",
+      "backup",
+      "backups",
+      "restore",
+      "project-deploy",
+      "project-deployments",
+      "project-revoke",
+    ].includes(args[0] ?? "")
+  )
     return runManagementCli(args, io);
   let parsed: ParsedArgs;
   try {

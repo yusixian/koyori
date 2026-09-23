@@ -6,6 +6,7 @@ import {
   createManagementStore,
   discoverSources,
   type ManagementPlan,
+  type ProjectDeploymentPlan,
 } from "@koyori/core";
 
 export const MANAGEMENT_HELP = `
@@ -14,10 +15,14 @@ export const MANAGEMENT_HELP = `
   koyori backup --source <skill-directory> ... --root <authorized-directory> ... --store <path>
   koyori backups --store <path>
   koyori restore --snapshot <id> --target <skills-directory> --root <authorized-directory> ... --store <path> [--replace] [--apply <revision>]
+  koyori project-deploy --project <path> --source <skill-directory> --from <client> --to <client> --root <authorized-directory> ... --store <path> [--apply <revision>]
+  koyori project-deployments --store <path>
+  koyori project-revoke --project <path> --deployment <id> --root <authorized-directory> ... --store <path> [--apply <revision>]
 
-sync/restore print a plan and revision first. Re-run with --apply <revision> to execute that
+sync/restore/project-deploy/project-revoke print a plan and revision first. Re-run with --apply <revision> to execute that
 exact change; changed files invalidate the revision. backup writes a local snapshot only.
-All paths are explicit; --root grants access only to the selected directory trees.`;
+All paths are explicit; --root grants access only to the selected directory trees.
+Project deployment never replaces an existing target. Revocation only moves an unchanged managed copy to recovery.`;
 
 class ArgumentError extends Error {}
 function parse(args: string[]) {
@@ -30,6 +35,9 @@ function parse(args: string[]) {
     backup: ["source", "root", "store"],
     backups: ["store"],
     restore: ["snapshot", "target", "root", "store", "apply", "replace"],
+    "project-deploy": ["project", "source", "from", "to", "root", "store", "apply"],
+    "project-deployments": ["store"],
+    "project-revoke": ["project", "deployment", "root", "store", "apply"],
   };
   if (!command || !allowed[command]) throw new ArgumentError("Unknown management command.");
   for (let i = 1; i < args.length; i += 1) {
@@ -75,6 +83,18 @@ function revision(plan: ManagementPlan) {
   return createHash("sha256").update(JSON.stringify(stable)).digest("hex");
 }
 
+function projectRevision(
+  plan: ProjectDeploymentPlan,
+  store: string,
+  roots: string[],
+  input: Record<string, string>,
+) {
+  const { id: _id, expiresAt: _expiresAt, ...content } = plan;
+  return createHash("sha256")
+    .update(JSON.stringify({ store, roots, input, plan: content }))
+    .digest("hex");
+}
+
 export async function runManagementCli(
   args: string[],
   io: { stdout: Pick<NodeJS.WriteStream, "write">; stderr: Pick<NodeJS.WriteStream, "write"> },
@@ -96,8 +116,11 @@ export async function runManagementCli(
       return result.issues.some((issue) => issue.severity === "error") ? 1 : 0;
     }
     const roots =
-      options.command === "backups" ? [] : options.many("root").map((path) => resolve(path));
-    const store = await createManagementStore(resolve(options.one("store")), {
+      options.command === "backups" || options.command === "project-deployments"
+        ? []
+        : options.many("root").map((path) => resolve(path));
+    const storePath = resolve(options.one("store"));
+    const store = await createManagementStore(storePath, {
       authorizedRoots: () => roots,
     });
     if (options.command === "backups") {
@@ -112,6 +135,69 @@ export async function runManagementCli(
       );
       io.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
       return 0;
+    }
+    if (options.command === "project-deployments") {
+      io.stdout.write(`${JSON.stringify(await store.listProjectDeployments(), null, 2)}\n`);
+      return 0;
+    }
+    if (options.command === "project-deploy" || options.command === "project-revoke") {
+      const projectPath = resolve(options.one("project"));
+      let plan: ProjectDeploymentPlan;
+      let input: Record<string, string>;
+      if (options.command === "project-deploy") {
+        const source = resolve(options.one("source"));
+        const sourceClient = options.client("from");
+        const targetClient = options.client("to");
+        input = { projectPath, source, sourceClient, targetClient };
+        plan = await store.planProjectDeploy({
+          projectPath,
+          source,
+          sourceClient,
+          targetClient,
+          targetRoot: join(
+            projectPath,
+            targetClient === "claude-code" ? ".claude" : ".agents",
+            "skills",
+          ),
+        });
+      } else {
+        const deploymentId = options.one("deployment");
+        input = { projectPath, deploymentId };
+        const deployment = (await store.listProjectDeployments()).find(
+          (item) => item.id === deploymentId,
+        );
+        if (!deployment) throw new ArgumentError("Project deployment not found.");
+        if (deployment.projectPath !== projectPath)
+          throw new ArgumentError("Deployment does not belong to the selected project.");
+        plan = await store.planProjectRevoke(deploymentId);
+      }
+      const current = projectRevision(plan, storePath, roots, input);
+      const approved = options.one("apply", false);
+      if (!approved) {
+        io.stdout.write(`${JSON.stringify({ revision: current, plan }, null, 2)}\n`);
+        return plan.executable ? 0 : 1;
+      }
+      if (approved !== current)
+        throw new ArgumentError(
+          "Files or options changed since preview. Generate and review a new plan.",
+        );
+      if (!plan.executable) {
+        io.stdout.write(`${JSON.stringify({ revision: current, plan }, null, 2)}\n`);
+        return 1;
+      }
+      const operation = await store.executeProjectPlan(plan.id);
+      const deployment =
+        operation.status === "succeeded"
+          ? (await store.listProjectDeployments()).find((item) =>
+              plan.kind === "project-deploy"
+                ? item.status === "active" && item.targetPath === plan.targetPath
+                : item.id === plan.deploymentId,
+            )
+          : undefined;
+      io.stdout.write(
+        `${JSON.stringify({ operation, deployment: deployment ?? null }, null, 2)}\n`,
+      );
+      return operation.status === "succeeded" ? 0 : 1;
     }
     let plan: ManagementPlan;
     if (options.command === "sync") {
