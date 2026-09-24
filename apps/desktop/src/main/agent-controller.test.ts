@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AgentProviderRequest, AgentView } from "../agent-types";
+import type { AgentConnectionProbeResult, AgentProviderRequest, AgentView } from "../agent-types";
 
 type Handler = (event: unknown, ...args: unknown[]) => unknown;
 
@@ -28,6 +28,7 @@ vi.mock("electron", () => ({
 
 import type { AgentCipher } from "./agent-controller";
 import { createAgentController } from "./agent-controller";
+import type { discoverAgentModels } from "./agent-provider";
 
 const availableCipher: AgentCipher = {
   isEncryptionAvailable: () => true,
@@ -58,6 +59,7 @@ async function fixture(
   options: {
     cipher?: AgentCipher;
     streamResponse?: (request: AgentProviderRequest) => Promise<void>;
+    discoverModels?: typeof discoverAgentModels;
     persist?: (path: string, settings: unknown) => Promise<void>;
     validateBaseUrl?: (value: string) => string;
     streamPersistIntervalMs?: number;
@@ -76,6 +78,7 @@ async function fixture(
     cipher: options.cipher ?? availableCipher,
     validateBaseUrl: options.validateBaseUrl ?? ((value) => value.replace(/\/+$/, "")),
     streamResponse: options.streamResponse ?? (async () => {}),
+    discoverModels: options.discoverModels,
     persist: options.persist,
     streamPersistIntervalMs: options.streamPersistIntervalMs ?? 0,
     now: () => new Date("2026-09-22T00:00:00.000Z"),
@@ -132,6 +135,44 @@ function hasCompletedAssistant(value: unknown): boolean {
 }
 
 describe("agent controller", () => {
+  it("tests a draft without saving it and reuses a stored key only for the same URL", async () => {
+    const discoverModels = vi.fn(async () => ({ status: 200, models: ["fixture-model"] }));
+    const { path, controller, changed } = await fixture({ discoverModels });
+    await saveConnection();
+    const before = await readFile(path, "utf8");
+    changed.mockClear();
+
+    const result = await invoke<AgentConnectionProbeResult>("agent:connection:probe", {
+      baseUrl: connectionInput.baseUrl,
+      apiKey: "",
+    });
+    expect(result).toEqual({ ok: true, status: 200, models: ["fixture-model"], error: null });
+    expect(discoverModels).toHaveBeenCalledWith({
+      baseUrl: "https://provider.example/v1",
+      apiKey: "private-key",
+    });
+    expect(changed).not.toHaveBeenCalled();
+    expect(await readFile(path, "utf8")).toBe(before);
+
+    const changedUrl = await invoke<AgentConnectionProbeResult>("agent:connection:probe", {
+      baseUrl: "https://other.example/v1",
+      apiKey: "",
+    });
+    expect(changedUrl.ok).toBe(false);
+    expect(changedUrl.error).toContain("重新填写 API Key");
+    expect(discoverModels).toHaveBeenCalledTimes(1);
+
+    const saved = await invoke<AgentView>("agent:connection:save", {
+      ...connectionInput,
+      model: "other-model",
+      apiKey: "",
+    });
+    expect(saved.connection?.keyConfigured).toBe(true);
+    expect(await readFile(path, "utf8")).toContain(
+      Buffer.from("sealed:private-key").toString("base64"),
+    );
+    await controller.stop();
+  });
   it("encrypts the API key at rest, never returns it, and writes a backup", async () => {
     const { path, controller } = await fixture();
 

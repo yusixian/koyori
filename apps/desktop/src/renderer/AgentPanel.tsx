@@ -20,10 +20,15 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { AgentConnectionInput, AgentMessage, AgentView } from "../agent-types";
+import type {
+  AgentConnectionInput,
+  AgentConnectionProbeResult,
+  AgentMessage,
+  AgentView,
+} from "../agent-types";
 import "./agent.css";
 
-type BusyAction = "connection" | "session" | "message" | "cancel" | null;
+type BusyAction = "connection" | "probe" | "session" | "message" | "cancel" | null;
 
 const emptyConnection: AgentConnectionInput = {
   name: "",
@@ -92,6 +97,8 @@ export function AgentPanel({ pendingDiscussion, onDismissDiscussion }: AgentPane
   const [error, setError] = useState("");
   const [showConnection, setShowConnection] = useState(false);
   const [connectionDraft, setConnectionDraft] = useState<AgentConnectionInput>(emptyConnection);
+  const [probeResult, setProbeResult] = useState<AgentConnectionProbeResult | null>(null);
+  const [showModels, setShowModels] = useState(false);
   const [draft, setDraft] = useState("");
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
@@ -223,6 +230,8 @@ export function AgentPanel({ pendingDiscussion, onDismissDiscussion }: AgentPane
   }
 
   function openConnection() {
+    setProbeResult(null);
+    setShowModels(false);
     setConnectionDraft({
       name: view?.connection?.name ?? "",
       baseUrl: view?.connection?.baseUrl ?? "",
@@ -233,6 +242,29 @@ export function AgentPanel({ pendingDiscussion, onDismissDiscussion }: AgentPane
     requestAnimationFrame(() =>
       document.querySelector(".agent-connection-editor")?.scrollIntoView({ block: "start" }),
     );
+  }
+
+  async function probeConnection(listModels: boolean) {
+    setBusy("probe");
+    setProbeResult(null);
+    setShowModels(listModels);
+    try {
+      setProbeResult(
+        await window.koyori.probeAgentConnection({
+          baseUrl: connectionDraft.baseUrl.trim(),
+          apiKey: connectionDraft.apiKey,
+        }),
+      );
+    } catch {
+      setProbeResult({
+        ok: false,
+        status: null,
+        models: [],
+        error: "连接测试没有完成，请稍后重试。",
+      });
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function saveConnection(event: React.FormEvent<HTMLFormElement>) {
@@ -523,7 +555,7 @@ export function AgentPanel({ pendingDiscussion, onDismissDiscussion }: AgentPane
               <span>连接名称</span>
               <input
                 required
-                disabled={busy === "connection"}
+                disabled={busy === "connection" || busy === "probe"}
                 value={connectionDraft.name}
                 placeholder="例如：本机模型"
                 onChange={(event) =>
@@ -536,14 +568,15 @@ export function AgentPanel({ pendingDiscussion, onDismissDiscussion }: AgentPane
               <input
                 required
                 type="url"
-                disabled={busy === "connection"}
+                disabled={busy === "connection" || busy === "probe"}
                 aria-labelledby="agent-base-url-label"
                 aria-describedby="agent-base-url-help"
                 value={connectionDraft.baseUrl}
                 placeholder="http://127.0.0.1:11434/v1"
-                onChange={(event) =>
-                  setConnectionDraft((current) => ({ ...current, baseUrl: event.target.value }))
-                }
+                onChange={(event) => {
+                  setProbeResult(null);
+                  setConnectionDraft((current) => ({ ...current, baseUrl: event.target.value }));
+                }}
               />
               <small id="agent-base-url-help">填写服务提供方给出的完整 API 基址，例如 /v1。</small>
             </label>
@@ -551,7 +584,7 @@ export function AgentPanel({ pendingDiscussion, onDismissDiscussion }: AgentPane
               <span>模型</span>
               <input
                 required
-                disabled={busy === "connection"}
+                disabled={busy === "connection" || busy === "probe"}
                 value={connectionDraft.model}
                 placeholder="模型 ID"
                 onChange={(event) =>
@@ -566,25 +599,42 @@ export function AgentPanel({ pendingDiscussion, onDismissDiscussion }: AgentPane
                 <input
                   type="password"
                   autoComplete="new-password"
-                  disabled={busy === "connection"}
+                  disabled={busy === "connection" || busy === "probe"}
                   aria-labelledby="agent-key-label"
                   aria-describedby="agent-key-help"
                   value={connectionDraft.apiKey}
                   placeholder={
                     view.connection?.keyConfigured
-                      ? "已保存；如需沿用请重新填写"
+                      ? "留空沿用已保存密钥（仅原地址）"
                       : "保存后不会再次显示"
                   }
-                  onChange={(event) =>
-                    setConnectionDraft((current) => ({ ...current, apiKey: event.target.value }))
-                  }
+                  onChange={(event) => {
+                    setProbeResult(null);
+                    setConnectionDraft((current) => ({ ...current, apiKey: event.target.value }));
+                  }}
                 />
               </span>
               <small id="agent-key-help">
-                保存密钥或使用已保存的密钥发送消息时，系统可能请求钥匙串授权。
+                保存密钥、测试连接或使用已保存密钥时，系统可能请求钥匙串授权。
               </small>
             </label>
             <div className="agent-connection-actions">
+              <button
+                type="button"
+                className="agent-button"
+                disabled={busy !== null || !connectionDraft.baseUrl.trim()}
+                onClick={() => void probeConnection(false)}
+              >
+                {busy === "probe" && !showModels ? "测试中…" : "测试连接"}
+              </button>
+              <button
+                type="button"
+                className="agent-button"
+                disabled={busy !== null || !connectionDraft.baseUrl.trim()}
+                onClick={() => void probeConnection(true)}
+              >
+                {busy === "probe" && showModels ? "获取中…" : "获取模型"}
+              </button>
               {view.connection && (
                 <button
                   type="button"
@@ -606,6 +656,37 @@ export function AgentPanel({ pendingDiscussion, onDismissDiscussion }: AgentPane
               </button>
             </div>
           </form>
+          {probeResult && (
+            <div
+              className={`agent-probe-result ${probeResult.ok ? "agent-probe-success" : ""}`}
+              role="status"
+            >
+              <p>
+                {probeResult.ok
+                  ? `HTTP ${probeResult.status} · 连接成功，已读取模型列表。此操作不会发起推理，也不验证所选模型能否对话。`
+                  : probeResult.error}
+              </p>
+              {probeResult.ok &&
+                showModels &&
+                (probeResult.models.length > 0 ? (
+                  <fieldset className="agent-model-list">
+                    <legend className="agent-visually-hidden">可选模型</legend>
+                    {probeResult.models.map((model) => (
+                      <button
+                        key={model}
+                        type="button"
+                        className="agent-button"
+                        onClick={() => setConnectionDraft((current) => ({ ...current, model }))}
+                      >
+                        {model}
+                      </button>
+                    ))}
+                  </fieldset>
+                ) : (
+                  <p>服务返回了空模型列表，可手动填写模型 ID。</p>
+                ))}
+            </div>
+          )}
         </section>
       )}
 

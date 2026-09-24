@@ -6,11 +6,19 @@ import { join, resolve } from "node:path";
 import { _electron as electron, expect, test } from "@playwright/test";
 
 test("agent conversation streams, cancels, persists and isolates connections", async () => {
+  test.setTimeout(180_000);
   const temporary = await mkdtemp(join(tmpdir(), "koyori-agent-acceptance-"));
   const userData = join(temporary, "app-data");
   const requests: string[] = [];
+  let modelRequests = 0;
   let cancelledRequests = 0;
   const server = createServer(async (request, response) => {
+    if (request.method === "GET" && request.url === "/v1/models") {
+      modelRequests += 1;
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end('{"data":[{"id":"synthetic-model"},{"id":"other-model"}]}');
+      return;
+    }
     if (request.method !== "POST" || request.url !== "/v1/chat/completions") {
       response.writeHead(404).end();
       return;
@@ -72,7 +80,16 @@ test("agent conversation streams, cancels, persists and isolates connections", a
     await page.locator(".agent-heading").getByRole("button", { name: "连接设置" }).click();
     await page.getByLabel("连接名称", { exact: true }).fill("合成连接 A");
     await page.getByLabel("服务地址", { exact: true }).fill(baseUrl);
-    await page.getByLabel("模型", { exact: true }).fill("synthetic-model");
+    await page.getByRole("button", { name: "测试连接", exact: true }).click();
+    await expect(page.getByText(/HTTP 200 · 连接成功/)).toBeVisible();
+    await page.getByRole("button", { name: "获取模型", exact: true }).click();
+    await page
+      .getByRole("group", { name: "可选模型" })
+      .getByRole("button", { name: "synthetic-model" })
+      .click();
+    await expect(page.getByLabel("模型", { exact: true })).toHaveValue("synthetic-model");
+    expect(modelRequests).toBe(2);
+    expect(requests).toHaveLength(0);
     await page.getByRole("button", { name: "保存连接", exact: true }).click();
     expect(requests).toHaveLength(0);
     await page.getByLabel("消息", { exact: true }).fill("第一次测试消息");
@@ -135,6 +152,7 @@ test("agent conversation streams, cancels, persists and isolates connections", a
     await page.getByLabel("消息", { exact: true }).fill("模拟错误");
     await page.getByRole("button", { name: "发送", exact: true }).click();
     await expect(page.getByText("发送失败", { exact: true })).toBeVisible();
+    await expect(page.getByText(/HTTP 503/).first()).toBeVisible();
     expect(await page.locator("body").innerText()).not.toContain(
       "PRIVATE_PROVIDER_ERROR_DO_NOT_DISPLAY",
     );

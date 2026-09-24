@@ -10,6 +10,9 @@ const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 const MAX_EVENT_BYTES = 256 * 1024;
 const TOTAL_TIMEOUT_MS = 2 * 60 * 1000;
 const IDLE_TIMEOUT_MS = 30 * 1000;
+const DISCOVERY_TIMEOUT_MS = 15 * 1000;
+const MAX_DISCOVERY_BYTES = 2 * 1024 * 1024;
+const MAX_ERROR_BYTES = 16 * 1024;
 
 const forbiddenIpv4 = new BlockList();
 for (const [network, prefix] of [
@@ -46,6 +49,8 @@ for (const [network, prefix] of [
 
 const loopbackIpv4 = new BlockList();
 loopbackIpv4.addSubnet("127.0.0.0", 8, "ipv4");
+const proxyFakeIpv4 = new BlockList();
+proxyFakeIpv4.addSubnet("198.18.0.0", 15, "ipv4");
 
 const metadataHostnames = new Set([
   "instance-data.ec2.internal",
@@ -54,7 +59,14 @@ const metadataHostnames = new Set([
   "metadata.goog",
 ]);
 
-class ProviderFailure extends Error {}
+export class ProviderFailure extends Error {
+  constructor(
+    message: string,
+    readonly status: number | null = null,
+  ) {
+    super(message);
+  }
+}
 
 interface ValidatedAddress {
   address: string;
@@ -121,12 +133,12 @@ export function validateAgentBaseUrl(value: string): string {
   return `${parsed.origin}${pathname === "/" ? "" : pathname}`;
 }
 
-async function resolveEndpoint(endpoint: URL): Promise<ValidatedAddress[]> {
+export function validateResolvedAgentAddresses(
+  endpoint: URL,
+  addresses: readonly { address: string; family: number }[],
+): ValidatedAddress[] {
   const hostname = normalizedHostname(endpoint);
   const directFamily = ipFamily(hostname);
-  const addresses = directFamily
-    ? [{ address: hostname, family: directFamily }]
-    : await lookup(hostname, { all: true, verbatim: true });
   if (addresses.length === 0) throw new ProviderFailure("无法解析模型服务地址。");
 
   const allowLoopback =
@@ -138,11 +150,27 @@ async function resolveEndpoint(endpoint: URL): Promise<ValidatedAddress[]> {
     }
     const allowed = allowLoopback
       ? isLoopback(entry.address, entry.family)
-      : isPublicAddress(entry.address, entry.family);
-    if (!allowed) throw new ProviderFailure("模型服务地址解析到了不允许访问的网络。");
+      : isPublicAddress(entry.address, entry.family) ||
+        (endpoint.protocol === "https:" &&
+          directFamily === 0 &&
+          entry.family === 4 &&
+          proxyFakeIpv4.check(entry.address, "ipv4"));
+    if (!allowed)
+      throw new ProviderFailure(
+        "DNS 阶段：模型服务地址解析到了不允许访问的网络，尚未发送 HTTP 请求。",
+      );
     validated.push({ address: entry.address, family: entry.family });
   }
   return validated;
+}
+
+async function resolveEndpoint(endpoint: URL): Promise<ValidatedAddress[]> {
+  const hostname = normalizedHostname(endpoint);
+  const directFamily = ipFamily(hostname);
+  const addresses = directFamily
+    ? [{ address: hostname, family: directFamily }]
+    : await lookup(hostname, { all: true, verbatim: true });
+  return validateResolvedAgentAddresses(endpoint, addresses);
 }
 
 async function resolveEndpointForRequest(
@@ -182,7 +210,7 @@ async function resolveEndpointForRequest(
         reject(
           error instanceof ProviderFailure
             ? error
-            : new ProviderFailure("无法连接模型服务，请检查地址和网络。"),
+            : new ProviderFailure("DNS 阶段：无法解析模型服务地址，尚未发送 HTTP 请求。"),
         );
       },
     );
@@ -210,13 +238,86 @@ function pinnedLookup(addresses: readonly ValidatedAddress[]): LookupFunction {
   };
 }
 
-function safeStatusError(status: number): ProviderFailure {
-  if (status === 401 || status === 403) return new ProviderFailure("模型服务拒绝了身份验证。");
-  if (status === 429) return new ProviderFailure("模型服务当前请求过多，请稍后重试。");
-  if (status >= 400 && status < 500) return new ProviderFailure("模型服务拒绝了本次请求。");
-  if (status >= 500) return new ProviderFailure("模型服务暂时不可用，请稍后重试。");
-  if (status >= 300 && status < 400) return new ProviderFailure("模型服务返回了不允许的重定向。");
-  return new ProviderFailure("模型服务返回了异常状态。");
+function safeStatusError(status: number, detail = ""): ProviderFailure {
+  const reason =
+    status === 401 || status === 403
+      ? "模型服务拒绝了身份验证。"
+      : status === 429
+        ? "模型服务当前请求过多，请稍后重试。"
+        : status >= 400 && status < 500
+          ? "模型服务拒绝了本次请求。"
+          : status >= 500
+            ? "模型服务暂时不可用，请稍后重试。"
+            : status >= 300 && status < 400
+              ? "模型服务返回了不允许的重定向。"
+              : "模型服务返回了异常状态。";
+  return new ProviderFailure(
+    `HTTP ${status} · ${reason}${detail ? ` 接口响应：${detail}` : ""}`,
+    status,
+  );
+}
+
+function connectionFailure(error: unknown): ProviderFailure {
+  const code =
+    error && typeof error === "object" && "code" in error && typeof error.code === "string"
+      ? error.code
+      : "";
+  if (
+    [
+      "CERT_HAS_EXPIRED",
+      "DEPTH_ZERO_SELF_SIGNED_CERT",
+      "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+      "ERR_TLS_CERT_ALTNAME_INVALID",
+    ].includes(code)
+  ) {
+    return new ProviderFailure(`TLS 证书校验失败（${code}）。`);
+  }
+  if (["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENETUNREACH", "EHOSTUNREACH"].includes(code)) {
+    return new ProviderFailure(`连接阶段失败（${code}），尚未收到 HTTP 响应。`);
+  }
+  return new ProviderFailure("连接阶段失败：无法连接模型服务，尚未收到 HTTP 响应。");
+}
+
+function safeProviderDetail(body: string, apiKey: string): string {
+  try {
+    const payload: unknown = JSON.parse(body);
+    if (!payload || typeof payload !== "object") return "";
+    const error = (payload as Record<string, unknown>).error;
+    if (!error || typeof error !== "object") return "";
+    const fields = error as Record<string, unknown>;
+    const detail = [fields.code, fields.type, fields.message]
+      .filter((value): value is string => typeof value === "string")
+      .join(" · ")
+      .replaceAll(apiKey || "\0", "[REDACTED]")
+      .replace(/Bearer\s+[^\s]+/gi, "Bearer [REDACTED]")
+      .replace(/[\r\n\t]+/g, " ")
+      .trim();
+    return detail.slice(0, 320);
+  } catch {
+    return "";
+  }
+}
+
+async function readLimitedResponse(incoming: IncomingMessage, limit: number): Promise<string> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of incoming) {
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += bytes.byteLength;
+    if (size > limit) throw new ProviderFailure("模型服务响应超过大小限制。");
+    chunks.push(bytes);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+async function statusFailure(incoming: IncomingMessage, apiKey: string): Promise<ProviderFailure> {
+  const status = incoming.statusCode ?? 0;
+  try {
+    const body = await readLimitedResponse(incoming, MAX_ERROR_BYTES);
+    return safeStatusError(status, safeProviderDetail(body, apiKey));
+  } catch {
+    return safeStatusError(status);
+  }
 }
 
 function usageFrom(value: unknown): AgentUsage | null {
@@ -262,6 +363,7 @@ function makeRequestOptions(
   addresses: readonly ValidatedAddress[],
   bodyBytes: number,
   apiKey: string,
+  method: "GET" | "POST" = "POST",
 ): RequestOptions {
   const hostname = normalizedHostname(endpoint);
   const first = addresses[0];
@@ -271,21 +373,101 @@ function makeRequestOptions(
     hostname,
     port: endpoint.port || undefined,
     path: `${endpoint.pathname}${endpoint.search}`,
-    method: "POST",
+    method,
     agent: false,
     lookup: pinnedLookup(addresses),
     ...(addresses.length > 1
       ? { autoSelectFamily: true, autoSelectFamilyAttemptTimeout: 100 }
       : { family: first.family }),
     headers: {
-      Accept: "text/event-stream",
-      "Content-Type": "application/json",
-      "Content-Length": bodyBytes,
+      Accept: method === "GET" ? "application/json" : "text/event-stream",
+      ...(method === "POST"
+        ? { "Content-Type": "application/json", "Content-Length": bodyBytes }
+        : {}),
       Host: endpoint.host,
       ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
     },
     ...(endpoint.protocol === "https:" && ipFamily(hostname) === 0 ? { servername: hostname } : {}),
   };
+}
+
+export async function discoverAgentModels(input: {
+  baseUrl: string;
+  apiKey: string;
+}): Promise<{ status: number; models: string[] }> {
+  if (/[\r\n]/.test(input.apiKey)) throw new ProviderFailure("API 密钥格式无效。");
+  const endpoint = new URL(`${validateAgentBaseUrl(input.baseUrl)}/models`);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), DISCOVERY_TIMEOUT_MS);
+  let outgoing: ClientRequest | undefined;
+  try {
+    const addresses = await resolveEndpointForRequest(endpoint, controller.signal);
+    const options = makeRequestOptions(endpoint, addresses, 0, input.apiKey, "GET");
+    const send = endpoint.protocol === "https:" ? httpsRequest : httpRequest;
+    return await new Promise((resolve, reject) => {
+      const abort = () => {
+        outgoing?.destroy();
+        reject(new ProviderFailure("连接测试超时（15 秒）。"));
+      };
+      controller.signal.addEventListener("abort", abort, { once: true });
+      const finish = (error?: unknown, result?: { status: number; models: string[] }) => {
+        controller.signal.removeEventListener("abort", abort);
+        if (error) reject(error);
+        else if (result) resolve(result);
+      };
+      outgoing = send(options, (incoming) => {
+        void (async () => {
+          const status = incoming.statusCode ?? 0;
+          if (status < 200 || status >= 300) throw await statusFailure(incoming, input.apiKey);
+          let body: string;
+          try {
+            body = await readLimitedResponse(incoming, MAX_DISCOVERY_BYTES);
+          } catch {
+            throw new ProviderFailure(`HTTP ${status} · 模型列表响应过大或传输中断。`, status);
+          }
+          let payload: unknown;
+          try {
+            payload = JSON.parse(body);
+          } catch {
+            throw new ProviderFailure(`HTTP ${status} · 模型列表不是有效 JSON。`, status);
+          }
+          if (
+            !payload ||
+            typeof payload !== "object" ||
+            !Array.isArray((payload as Record<string, unknown>).data)
+          ) {
+            throw new ProviderFailure(`HTTP ${status} · 模型列表缺少 data 数组。`, status);
+          }
+          const models = [
+            ...new Set(
+              (payload as { data: unknown[] }).data.flatMap((item) => {
+                if (!item || typeof item !== "object") return [];
+                const id = (item as Record<string, unknown>).id;
+                return typeof id === "string" &&
+                  id.trim() &&
+                  id.length <= 200 &&
+                  [...id].every((character) => {
+                    const code = character.charCodeAt(0);
+                    return code > 31 && code !== 127;
+                  })
+                  ? [id]
+                  : [];
+              }),
+            ),
+          ].slice(0, 500);
+          finish(undefined, { status, models });
+        })().catch((error: unknown) => finish(error));
+      });
+      outgoing.on("error", (error) => finish(connectionFailure(error)));
+      outgoing.end();
+    });
+  } catch (error) {
+    if (controller.signal.aborted) throw new ProviderFailure("连接测试超时（15 秒）。");
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    outgoing?.destroy();
+  }
 }
 
 export async function streamAgentResponse(request: AgentProviderRequest): Promise<void> {
@@ -445,7 +627,9 @@ export async function streamAgentResponse(request: AgentProviderRequest): Promis
         }
         const status = incoming.statusCode ?? 0;
         if (status < 200 || status >= 300) {
-          fail(safeStatusError(status));
+          void statusFailure(incoming, request.apiKey).then(fail, () =>
+            fail(safeStatusError(status)),
+          );
           return;
         }
         const contentType = incoming.headers["content-type"];
@@ -453,12 +637,12 @@ export async function streamAgentResponse(request: AgentProviderRequest): Promis
           typeof contentType !== "string" ||
           contentType.split(";", 1)[0]?.trim().toLowerCase() !== "text/event-stream"
         ) {
-          fail(new ProviderFailure("模型服务未返回受支持的流式响应。"));
+          fail(new ProviderFailure(`HTTP ${status} · 模型服务未返回受支持的流式响应。`, status));
           return;
         }
         const declaredLength = Number(incoming.headers["content-length"]);
         if (Number.isFinite(declaredLength) && declaredLength > MAX_RESPONSE_BYTES) {
-          fail(new ProviderFailure("模型服务返回的数据过大。"));
+          fail(new ProviderFailure(`HTTP ${status} · 模型服务返回的数据过大。`, status));
           return;
         }
         resetIdleTimer();
@@ -491,12 +675,12 @@ export async function streamAgentResponse(request: AgentProviderRequest): Promis
         );
         incoming.on("error", () => fail(new ProviderFailure("读取模型响应失败，请稍后重试。")));
       });
-    } catch {
-      fail(new ProviderFailure("无法连接模型服务，请检查地址和网络。"));
+    } catch (error) {
+      fail(connectionFailure(error));
       return;
     }
-    outgoing.on("error", () => {
-      if (!settled) fail(new ProviderFailure("无法连接模型服务，请检查地址和网络。"));
+    outgoing.on("error", (error) => {
+      if (!settled) fail(connectionFailure(error));
     });
     request.signal.addEventListener("abort", abort, { once: true });
     totalTimer = setTimeout(

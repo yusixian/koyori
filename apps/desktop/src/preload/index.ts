@@ -14,6 +14,7 @@ const bridge: KoyoriBridge = {
   },
   getAgent: () => ipcRenderer.invoke("agent:get"),
   saveAgentConnection: (input) => ipcRenderer.invoke("agent:connection:save", input),
+  probeAgentConnection: (input) => ipcRenderer.invoke("agent:connection:probe", input),
   disconnectAgent: () => ipcRenderer.invoke("agent:disconnect"),
   createAgentSession: () => ipcRenderer.invoke("agent:session:create"),
   selectAgentSession: (id) => ipcRenderer.invoke("agent:session:select", id),

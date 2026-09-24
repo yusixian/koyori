@@ -8,7 +8,12 @@ const dns = vi.hoisted(() => ({
 }));
 vi.mock("node:dns/promises", () => ({ lookup: dns.lookup }));
 
-import { streamAgentResponse, validateAgentBaseUrl } from "./agent-provider";
+import {
+  discoverAgentModels,
+  streamAgentResponse,
+  validateAgentBaseUrl,
+  validateResolvedAgentAddresses,
+} from "./agent-provider";
 
 const servers: Server[] = [];
 
@@ -176,6 +181,75 @@ it("validates every DNS result before opening a connection", async () => {
 
   await expect(streamAgentResponse(fixture.input)).rejects.toThrow("解析到了不允许访问的网络");
   expect(fixture.text).toEqual([]);
+});
+
+it("accepts a proxy fake-IP DNS answer only for an HTTPS hostname", () => {
+  expect(
+    validateResolvedAgentAddresses(new URL("https://service.example/v1/models"), [
+      { address: "198.18.0.42", family: 4 },
+    ]),
+  ).toEqual([{ address: "198.18.0.42", family: 4 }]);
+  expect(() => validateAgentBaseUrl("https://198.18.0.42/v1")).toThrow("不允许访问");
+  expect(() =>
+    validateResolvedAgentAddresses(new URL("https://service.example/v1/models"), [
+      { address: "198.18.0.42", family: 4 },
+      { address: "10.0.0.8", family: 4 },
+    ]),
+  ).toThrow("不允许访问");
+});
+
+it("discovers models without inference and reports HTTP status and redacted provider detail", async () => {
+  const requests: string[] = [];
+  const port = await listen((incoming, response) => {
+    requests.push(`${incoming.method} ${incoming.url} ${incoming.headers.authorization}`);
+    if (requests.length === 1) {
+      response.writeHead(401, { "Content-Type": "application/json" });
+      response.end('{"error":{"code":"invalid_api_key","message":"fixture-key is invalid"}}');
+    } else {
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end('{"data":[{"id":"model-b"},{"id":"model-a"},{"id":"model-a"}]}');
+    }
+  });
+  const input = { baseUrl: `http://localhost:${port}/v1`, apiKey: "fixture-key" };
+
+  await expect(discoverAgentModels(input)).rejects.toThrow(
+    /HTTP 401.*invalid_api_key.*\[REDACTED\]/,
+  );
+  await expect(discoverAgentModels(input)).resolves.toEqual({
+    status: 200,
+    models: ["model-b", "model-a"],
+  });
+  expect(requests).toEqual([
+    "GET /v1/models Bearer fixture-key",
+    "GET /v1/models Bearer fixture-key",
+  ]);
+});
+
+it("shows chat HTTP diagnostics without exposing the API key or raw response", async () => {
+  const port = await listen((_incoming, response) => {
+    response.writeHead(429, { "Content-Type": "application/json" });
+    response.end(
+      '{"error":{"code":"rate_limit","message":"Bearer fixture-key quota exceeded","debug":"private trace"}}',
+    );
+  });
+  const fixture = request(port);
+  const failure = streamAgentResponse(fixture.input);
+  await expect(failure).rejects.toThrow(/HTTP 429.*rate_limit.*Bearer \[REDACTED\]/);
+  await expect(failure).rejects.not.toThrow("fixture-key");
+  await expect(failure).rejects.not.toThrow("private trace");
+});
+
+it("does not display arbitrary HTML or credentials from malformed discovery responses", async () => {
+  const port = await listen((_incoming, response) => {
+    response.writeHead(502, { "Content-Type": "text/html" });
+    response.end("<script>fixture-key</script>");
+  });
+  const failure = discoverAgentModels({
+    baseUrl: `http://localhost:${port}/v1`,
+    apiKey: "fixture-key",
+  });
+  await expect(failure).rejects.toThrow("HTTP 502");
+  await expect(failure).rejects.not.toThrow("<script>");
 });
 
 it("includes DNS resolution in the whole-request timeout", async () => {
