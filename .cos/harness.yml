@@ -1,0 +1,63 @@
+# Dev Harness policy for Koyori, read from the default branch by cos-tool-bot.
+# Field reference: cos-tool-bot docs/design/dev-harness-config.md §4.
+# Changes to this file are fixed at T3 and must be merged on GitHub by the owner.
+version: 1
+kind: electron
+
+verify:
+  quick: pnpm lint && pnpm typecheck && pnpm test
+  full: pnpm verify
+  acceptance: pnpm --filter @koyori/desktop build && pnpm test:desktop
+  timeout: 45m
+
+sizeGate:
+  # A fix usually also touches its test and the user guide (AGENTS.md).
+  maxFiles: 8
+  forbidTiers: [T3]
+
+areas:
+  desktop: ["apps/desktop/**"]
+  site: ["apps/site/**"]
+  cli: ["apps/cli/**"]
+  core: ["packages/core/**"]
+
+risk:
+  default: T2
+  T0: ["docs/**", "README.md", "CONTRIBUTING.md"]
+  T1: ["docs/releases/**", "apps/site/**", "acceptance/**"]
+  # Release, signing, licensing, and agent-instruction paths.
+  T3:
+    - "AGENTS.md"
+    - ".agents/**"
+    - "SECURITY.md"
+    - "LICENSE"
+    - "THIRD_PARTY_NOTICES.md"
+    - "third-party/**"
+    - "brand/**"
+    - "docs/release-signing.md"
+    - "apps/desktop/build/**"
+    - "scripts/package-desktop*.mjs"
+    - "scripts/prepare-licenses.mjs"
+    - "scripts/release-preview*.mjs"
+    - "scripts/accept-preview-archives.mjs"
+    - "scripts/check-public.mjs"
+
+contract:
+  # Koyori keeps release notes in docs/releases/ until release-kit is adopted.
+  releaseFragment: optional
+  sections: [verify, review]
+  screenshots: when-ui
+  uiPaths: ["apps/desktop/src/renderer/**", "apps/site/app/**"]
+
+release:
+  preview:
+    # Preview releases need the protected signing environment; never start one on merge.
+    trigger: manual
+    workflow: release-preview.yml
+
+docs:
+  paths: ["apps/site/content/docs/**", "docs/releases/**"]
+
+prompts:
+  # The repository's `oneshot` Skill runs a full release, so it is not offered for fixes.
+  preferSkills: [frontend-acceptance, gh-stack, pr-visual, review-code-change]
