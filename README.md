@@ -36,7 +36,7 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-`pnpm dev:site` 启动独立文档站；`pnpm koyori --help` 查看 CLI。首次启动会检测 Claude Code 与 Codex 的已知目录；项目目录只在你登记项目后检查，系统目录保持只读。同步和恢复始终先预览计划，使用统计默认关闭。开发与检查命令见 [贡献指南](CONTRIBUTING.md)，当前结果与下一步见 [实施状态](docs/implementation-status.md)。
+`pnpm dev` 的桌面开发页面默认从本机 `15173` 端口开始，冲突时自动选择可用端口；`pnpm dev:site` 启动独立文档站；`pnpm koyori --help` 查看 CLI。首次启动会检测 Claude Code 与 Codex 的已知目录；项目目录只在你登记项目后检查，系统目录保持只读。同步和恢复始终先预览计划，使用统计默认关闭。开发与检查命令见 [贡献指南](CONTRIBUTING.md)，当前结果与下一步见 [实施状态](docs/implementation-status.md)。
 
 ## 维护者发版
 

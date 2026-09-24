@@ -23,6 +23,7 @@ export default defineConfig({
   preload: { build: { rollupOptions: { output: { format: "cjs", entryFileNames: "index.cjs" } } } },
   renderer: {
     plugins: [react()],
+    server: { port: 15173 },
     define: { __APP_VERSION__: JSON.stringify(version) },
   },
 });
