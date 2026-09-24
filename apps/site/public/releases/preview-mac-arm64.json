@@ -1,18 +1,18 @@
 {
   "schemaVersion": 1,
-  "version": "0.1.0-alpha.5",
+  "version": "0.1.0-alpha.6",
   "channel": "preview",
-  "commit": "dea7b2ced6b22bf3e19c8ed14e0f65b6e08c1bea",
-  "publishedAt": "2026-09-24T03:30:24Z",
+  "commit": "041f4d251d7ee1d7f390c7e781d4d81d80010e47",
+  "publishedAt": "2026-09-24T04:55:59Z",
   "platform": "darwin",
   "arch": "arm64",
   "minimumSystemVersion": "13.0",
   "signing": "signed",
   "installation": "automatic",
-  "releaseNotesUrl": "https://github.com/yusixian/koyori/releases/tag/v0.1.0-alpha.5",
+  "releaseNotesUrl": "https://github.com/yusixian/koyori/releases/tag/v0.1.0-alpha.6",
   "download": {
-    "url": "https://github.com/yusixian/koyori/releases/download/v0.1.0-alpha.5/Koyori-0.1.0-alpha.5-arm64.dmg",
-    "sha256": "84ae50697a88d061fd208c0b24a78a1c525f735fabd2e3fe2f1efb2634bb4ab2",
-    "bytes": 143957022
+    "url": "https://github.com/yusixian/koyori/releases/download/v0.1.0-alpha.6/Koyori-0.1.0-alpha.6-arm64.dmg",
+    "sha256": "ae43f7d1b46dda85535efc7dc8e439f9f3c03b8272f5f7b1919423d0687e0aeb",
+    "bytes": 143958442
   }
 }
