@@ -11,7 +11,12 @@ import type {
   UsageRules,
   UsageView,
 } from "@koyori/core";
-import type { AgentConnectionInput, AgentView } from "./agent-types";
+import type {
+  AgentConnectionInput,
+  AgentConnectionProbeInput,
+  AgentConnectionProbeResult,
+  AgentView,
+} from "./agent-types";
 
 export interface RegisteredService {
   id: string;
@@ -146,6 +151,7 @@ export interface KoyoriBridge {
   onUpdateChanged(listener: () => void): () => void;
   getAgent(): Promise<AgentView>;
   saveAgentConnection(input: AgentConnectionInput): Promise<AgentView>;
+  probeAgentConnection(input: AgentConnectionProbeInput): Promise<AgentConnectionProbeResult>;
   disconnectAgent(): Promise<AgentView>;
   createAgentSession(): Promise<AgentView>;
   selectAgentSession(id: string): Promise<AgentView>;

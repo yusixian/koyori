@@ -6,13 +6,20 @@ import { ipcMain, safeStorage } from "electron";
 import type {
   AgentConnection,
   AgentConnectionInput,
+  AgentConnectionProbeInput,
+  AgentConnectionProbeResult,
   AgentMessage,
   AgentProviderRequest,
   AgentSession,
   AgentUsage,
   AgentView,
 } from "../agent-types";
-import { streamAgentResponse, validateAgentBaseUrl } from "./agent-provider";
+import {
+  discoverAgentModels,
+  ProviderFailure,
+  streamAgentResponse,
+  validateAgentBaseUrl,
+} from "./agent-provider";
 
 export const AGENT_MAX_SESSIONS = 50;
 export const AGENT_MAX_MESSAGES_PER_SESSION = 200;
@@ -57,6 +64,7 @@ export interface AgentControllerDependencies {
   cipher?: AgentCipher;
   validateBaseUrl?: (value: string) => string;
   streamResponse?: (request: AgentProviderRequest) => Promise<void>;
+  discoverModels?: typeof discoverAgentModels;
   now?: () => Date;
   id?: () => string;
   persist?: (path: string, settings: unknown) => Promise<void>;
@@ -372,6 +380,18 @@ function requireConnectionInput(value: unknown): AgentConnectionInput {
   };
 }
 
+function requireProbeInput(value: unknown): AgentConnectionProbeInput {
+  if (
+    !isRecord(value) ||
+    !hasOnlyKeys(value, ["baseUrl", "apiKey"]) ||
+    !nonEmptyString(value.baseUrl, 2_048) ||
+    !boundedString(value.apiKey, AGENT_MAX_API_KEY_CHARACTERS)
+  ) {
+    throw new Error("无效的连接测试参数。");
+  }
+  return { baseUrl: value.baseUrl.trim(), apiKey: value.apiKey };
+}
+
 function requireUsage(value: AgentUsage): AgentUsage {
   if (!validUsage(value) || value === null) throw new Error("Provider 返回了无效的用量信息。");
   return { inputTokens: value.inputTokens, outputTokens: value.outputTokens };
@@ -381,6 +401,7 @@ export async function createAgentController(deps: AgentControllerDependencies) {
   const cipher = deps.cipher ?? safeStorage;
   const validateBaseUrl = deps.validateBaseUrl ?? validateAgentBaseUrl;
   const streamResponse = deps.streamResponse ?? streamAgentResponse;
+  const discoverModels = deps.discoverModels ?? discoverAgentModels;
   const now = deps.now ?? (() => new Date());
   const id = deps.id ?? randomUUID;
   const persist =
@@ -658,6 +679,8 @@ export async function createAgentController(deps: AgentControllerDependencies) {
         } catch (error) {
           throw new Error("无法使用系统安全存储保存 API Key。", { cause: error });
         }
+      } else if (settings.connection?.baseUrl === baseUrl) {
+        encryptedApiKey = settings.connection.encryptedApiKey;
       }
       await cancelActive();
       const connectionId = id();
@@ -685,6 +708,30 @@ export async function createAgentController(deps: AgentControllerDependencies) {
       }));
       return view();
     });
+  }
+
+  async function probeConnection(value: unknown): Promise<AgentConnectionProbeResult> {
+    ensureRunning();
+    const input = requireProbeInput(value);
+    let apiKey = input.apiKey;
+    try {
+      const baseUrl = validateBaseUrl(input.baseUrl);
+      if (!apiKey && settings.connection?.encryptedApiKey) {
+        if (baseUrl !== settings.connection.baseUrl) {
+          throw new Error("测试新服务地址时，请重新填写 API Key。");
+        }
+        apiKey = decryptApiKey(settings.connection);
+      }
+      const result = await discoverModels({ baseUrl, apiKey });
+      return { ok: true, status: result.status, models: result.models, error: null };
+    } catch (error) {
+      return {
+        ok: false,
+        status: error instanceof ProviderFailure ? error.status : null,
+        models: [],
+        error: safeMessage(error, [apiKey]),
+      };
+    }
   }
 
   async function disconnect(): Promise<AgentView> {
@@ -885,6 +932,7 @@ export async function createAgentController(deps: AgentControllerDependencies) {
     return view();
   });
   register("agent:connection:save", 1, saveConnection);
+  register("agent:connection:probe", 1, probeConnection);
   register("agent:disconnect", 0, disconnect);
   register("agent:session:create", 0, createSession);
   register("agent:session:select", 1, selectSession);

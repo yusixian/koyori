@@ -4,6 +4,16 @@ export interface AgentConnectionInput {
   model: string;
   apiKey: string;
 }
+export interface AgentConnectionProbeInput {
+  baseUrl: string;
+  apiKey: string;
+}
+export interface AgentConnectionProbeResult {
+  ok: boolean;
+  status: number | null;
+  models: string[];
+  error: string | null;
+}
 export interface AgentConnection {
   id: string;
   name: string;
