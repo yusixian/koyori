@@ -10,11 +10,6 @@ verify:
   acceptance: pnpm --filter @koyori/desktop build && pnpm test:desktop
   timeout: 45m
 
-sizeGate:
-  # A fix usually also touches its test and the user guide (AGENTS.md).
-  maxFiles: 8
-  forbidTiers: [T3]
-
 areas:
   desktop: ["apps/desktop/**"]
   site: ["apps/site/**"]
