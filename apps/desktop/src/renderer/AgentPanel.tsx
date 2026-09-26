@@ -3,6 +3,7 @@ import type {
   SkillPreference,
   SkillPreferenceAction,
   SkillPreferenceCard,
+  UsageView,
 } from "@koyori/core";
 import {
   Bot,
@@ -39,6 +40,7 @@ const emptyConnection: AgentConnectionInput = {
 const agentMessageCharacterLimit = 65_536;
 
 interface AgentPanelProps {
+  active: boolean;
   pendingDiscussion: SkillDiscussionDraft | null;
   onDismissDiscussion: () => void;
   onViewSkillEvidence: (skillId: string, windowDays: 30 | 90) => string | null;
@@ -67,7 +69,11 @@ function formatSnapshotTime(value: string) {
 function preferenceLabel(value: SkillPreference | null) {
   if (!value) return "未设置保留或复查偏好";
   return `${value.keep ? "始终保留" : "未标记始终保留"} · ${
-    value.reviewAfter ? `${formatSnapshotTime(value.reviewAfter)} 复查` : "无复查日期"
+    value.reviewAfter
+      ? `复查日期 ${formatSnapshotTime(value.reviewAfter)}${
+          Date.parse(value.reviewAfter) <= Date.now() ? "（已到期）" : ""
+        }`
+      : "无复查日期"
   } · 初次发现 ${formatSnapshotTime(value.firstSeenAt)}`;
 }
 
@@ -93,6 +99,7 @@ function latestUserText(messages: AgentMessage[], assistantId: string) {
 }
 
 export function AgentPanel({
+  active,
   pendingDiscussion,
   onDismissDiscussion,
   onViewSkillEvidence,
@@ -112,9 +119,13 @@ export function AgentPanel({
   const [discussionError, setDiscussionError] = useState("");
   const [discussionSkill, setDiscussionSkill] = useState<SkillDiscussionDraft | null>(null);
   const [preferenceCard, setPreferenceCard] = useState<SkillPreferenceCard | null>(null);
+  const [preferenceView, setPreferenceView] = useState<UsageView | null>(null);
+  const [preferenceLoadError, setPreferenceLoadError] = useState(false);
   const [preferenceBusy, setPreferenceBusy] = useState(false);
   const [preferenceNotice, setPreferenceNotice] = useState("");
   const requestRef = useRef(0);
+  const preferenceReadRequestRef = useRef(0);
+  const preferenceActionRequestRef = useRef(0);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   const followMessagesRef = useRef(true);
@@ -192,6 +203,46 @@ export function AgentPanel({
       : pendingDiscussion.text
     : "";
   const actionableSkill = pendingDiscussion ?? discussionSkill;
+  const actionableSkillId = actionableSkill?.skillId;
+
+  useEffect(() => {
+    preferenceActionRequestRef.current += 1;
+    setPreferenceBusy(false);
+    setPreferenceCard(null);
+    if (!active || !actionableSkillId) {
+      setPreferenceView(null);
+      preferenceReadRequestRef.current += 1;
+      return;
+    }
+    let disposed = false;
+    setPreferenceView(null);
+    const refresh = () => {
+      const currentRequest = ++preferenceReadRequestRef.current;
+      setPreferenceLoadError(false);
+      void window.koyori.getUsage().then(
+        (next) => {
+          if (!disposed && currentRequest === preferenceReadRequestRef.current)
+            setPreferenceView(next);
+        },
+        () => {
+          if (!disposed && currentRequest === preferenceReadRequestRef.current)
+            setPreferenceLoadError(true);
+        },
+      );
+    };
+    refresh();
+    const unsubscribe = window.koyori.onWorkspaceChanged(refresh);
+    return () => {
+      disposed = true;
+      preferenceReadRequestRef.current += 1;
+      unsubscribe();
+    };
+  }, [active, actionableSkillId]);
+
+  const currentPreference = actionableSkillId
+    ? preferenceView?.preferences[actionableSkillId]
+    : null;
+  const hasExplicitPreference = Boolean(currentPreference?.keep || currentPreference?.reviewAfter);
 
   useEffect(() => {
     if (!pendingDiscussion) return;
@@ -436,30 +487,45 @@ export function AgentPanel({
 
   async function planPreference(action: SkillPreferenceAction) {
     if (!actionableSkill || preferenceBusy) return;
+    const requestId = ++preferenceActionRequestRef.current;
     setPreferenceBusy(true);
     setPreferenceCard(null);
     setPreferenceNotice("");
     try {
-      setPreferenceCard(await window.koyori.planSkillPreference(actionableSkill.skillId, action));
+      const card = await window.koyori.planSkillPreference(actionableSkill.skillId, action);
+      if (requestId === preferenceActionRequestRef.current) setPreferenceCard(card);
     } catch {
-      setPreferenceNotice("操作卡未能生成。请回到 Skills 核对资源状态后重试。");
+      if (requestId === preferenceActionRequestRef.current)
+        setPreferenceNotice("操作卡未能生成。请回到 Skills 核对资源状态后重试。");
     } finally {
-      setPreferenceBusy(false);
+      if (requestId === preferenceActionRequestRef.current) setPreferenceBusy(false);
     }
   }
 
   async function confirmPreference() {
     if (!preferenceCard || preferenceBusy) return;
+    const requestId = ++preferenceActionRequestRef.current;
     setPreferenceBusy(true);
     const card = preferenceCard;
     try {
-      await window.koyori.confirmSkillPreference(card.id);
-      setPreferenceNotice(`已保存“${card.skillName}”的偏好。`);
+      const next = await window.koyori.confirmSkillPreference(card.id);
+      if (requestId === preferenceActionRequestRef.current) {
+        preferenceReadRequestRef.current += 1;
+        setPreferenceView(next);
+        setPreferenceNotice(
+          card.action === "revoke"
+            ? `已撤销“${card.skillName}”的明确偏好。`
+            : `已保存“${card.skillName}”的偏好。`,
+        );
+      }
     } catch {
-      setPreferenceNotice("未保存：资源、偏好或操作卡已变化，或写入失败。请重新生成操作卡核对。");
+      if (requestId === preferenceActionRequestRef.current)
+        setPreferenceNotice("未保存：资源、偏好或操作卡已变化，或写入失败。请重新生成操作卡核对。");
     } finally {
-      setPreferenceCard(null);
-      setPreferenceBusy(false);
+      if (requestId === preferenceActionRequestRef.current) {
+        setPreferenceCard(null);
+        setPreferenceBusy(false);
+      }
     }
   }
 
@@ -794,6 +860,33 @@ export function AgentPanel({
           <p className="agent-discussion-boundary">
             由你选定的 Skill 生成本机操作卡。模型回复不会改变提案；预览后仍需你确认。
           </p>
+          <div className="agent-preference-current" aria-live="polite">
+            {preferenceLoadError ? (
+              <p>当前偏好读取失败。请到 Skills 的使用与建议核对后重试。</p>
+            ) : !preferenceView ? (
+              <p>正在读取本机偏好…</p>
+            ) : currentPreference === undefined ? (
+              <p>当前状态：未知 · 本机账本尚无该 Skill 的偏好记录</p>
+            ) : hasExplicitPreference ? (
+              <>
+                <p>来源：Koyori 本机使用账本 · 用户手动设置</p>
+                <p>当前状态：{preferenceLabel(currentPreference)}</p>
+              </>
+            ) : (
+              <p>当前状态：未保存明确的保留或复查偏好</p>
+            )}
+            <button
+              type="button"
+              className="agent-text-button"
+              onClick={() =>
+                setPreferenceNotice(
+                  onViewSkillEvidence(actionableSkill.skillId, actionableSkill.windowDays) ?? "",
+                )
+              }
+            >
+              前往 Skills · 使用与建议
+            </button>
+          </div>
           <div className="agent-preference-choices">
             <button
               type="button"
@@ -811,12 +904,27 @@ export function AgentPanel({
             >
               30 天后复查
             </button>
+            {hasExplicitPreference && (
+              <button
+                type="button"
+                className="agent-button agent-danger-text"
+                disabled={preferenceBusy}
+                onClick={() => void planPreference("revoke")}
+              >
+                撤销明确偏好
+              </button>
+            )}
           </div>
           {preferenceCard && (
             <div className="agent-preference-preview">
               <p>目标：{preferenceCard.skillName}</p>
               <p>当前：{preferenceLabel(preferenceCard.current)}</p>
-              <p>确认后：{preferenceLabel(preferenceCard.result)}</p>
+              <p>
+                确认后：
+                {preferenceCard.action === "revoke"
+                  ? "未保存明确的保留或复查偏好（首次发现日期保留）"
+                  : preferenceLabel(preferenceCard.result)}
+              </p>
               <p>
                 有效至：{formatSnapshotTime(preferenceCard.expiresAt)}
                 。确认时重新核对资源与当前偏好。
@@ -828,7 +936,11 @@ export function AgentPanel({
                   disabled={preferenceBusy}
                   onClick={() => void confirmPreference()}
                 >
-                  {preferenceBusy ? "正在核对" : "确认保存偏好"}
+                  {preferenceBusy
+                    ? "正在核对"
+                    : preferenceCard.action === "revoke"
+                      ? "确认撤销偏好"
+                      : "确认保存偏好"}
                 </button>
                 <button
                   type="button"

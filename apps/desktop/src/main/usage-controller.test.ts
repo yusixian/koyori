@@ -304,6 +304,79 @@ describe("usage controller boundaries", () => {
     );
   });
 
+  it("revokes only an explicit preference after confirmation and preserves the observation date", async () => {
+    const firstSeenAt = "2026-09-01T00:00:00.000Z";
+    mocks.readUsageState.mockResolvedValue(
+      state({
+        preferences: {
+          "skill-writer": { keep: true, reviewAfter: null, firstSeenAt },
+        },
+      }),
+    );
+    await createUsageController(dependencies(() => [root]));
+    const card = (await ipc("usage:preference:plan")(
+      event(),
+      "skill-writer",
+      "revoke",
+    )) as SkillPreferenceCard;
+    expect(card).toMatchObject({
+      action: "revoke",
+      current: { keep: true, reviewAfter: null, firstSeenAt },
+      result: { keep: false, reviewAfter: null, firstSeenAt },
+    });
+    expect(mocks.writeUsageState).not.toHaveBeenCalled();
+    expect((ipc("usage:get")(event(), 90) as UsageView).preferences["skill-writer"]?.keep).toBe(
+      true,
+    );
+    const revoked = (await ipc("usage:preference:confirm")(event(), card.id)) as UsageView;
+    expect(revoked.preferences["skill-writer"]).toEqual(card.result);
+    expect(mocks.writeUsageState).toHaveBeenCalledOnce();
+    await expect(ipc("usage:preference:plan")(event(), "skill-writer", "revoke")).rejects.toThrow(
+      "No confirmed preference",
+    );
+  });
+
+  it("rejects revocation if the selected Skill or preference changes after preview", async () => {
+    mocks.readUsageState.mockResolvedValue(
+      state({
+        preferences: {
+          "skill-writer": {
+            keep: false,
+            reviewAfter: "2026-10-22T12:00:00.000Z",
+            firstSeenAt: now,
+          },
+        },
+      }),
+    );
+    await createUsageController(dependencies(() => [root]));
+    const stalePreference = (await ipc("usage:preference:plan")(
+      event(),
+      "skill-writer",
+      "revoke",
+    )) as SkillPreferenceCard;
+    await ipc("usage:preference")(event(), "skill-writer", { keep: true }, 90);
+    await expect(ipc("usage:preference:confirm")(event(), stalePreference.id)).rejects.toThrow(
+      "Preference changed",
+    );
+    const staleSkill = (await ipc("usage:preference:plan")(
+      event(),
+      "skill-writer",
+      "revoke",
+    )) as SkillPreferenceCard;
+    mocks.stat.mockResolvedValue({
+      isFile: () => true,
+      dev: 1,
+      ino: 1,
+      size: 9,
+      mtimeMs: 2,
+      ctimeMs: 2,
+    });
+    await expect(ipc("usage:preference:confirm")(event(), staleSkill.id)).rejects.toThrow(
+      "Resource changed",
+    );
+    expect(mocks.writeUsageState).toHaveBeenCalledOnce();
+  });
+
   it("rejects preference cards after a preference change, root removal or expiry", async () => {
     let roots = [root];
     mocks.readUsageState.mockResolvedValue(state());

@@ -150,13 +150,15 @@ export async function createUsageController(deps: Dependencies) {
   ipcMain.handle("usage:preference:plan", async (event, skillId: unknown, action: unknown) => {
     deps.trusted(event);
     if (typeof skillId !== "string" || skillId.length > 512) throw new Error("Invalid resource");
-    if (action !== "keep" && action !== "review-later")
+    if (action !== "keep" && action !== "review-later" && action !== "revoke")
       throw new Error("Unsupported preference action");
     requireIdle();
     const { skill } = connectedSkill(skillId);
     const fingerprint = await resourceFingerprint(skillId);
     const createdAt = now();
     const current = state.preferences[skillId];
+    if (action === "revoke" && !current?.keep && !current?.reviewAfter)
+      throw new Error("No confirmed preference to revoke");
     const result = preferenceAfterAction(action as SkillPreferenceAction, current, createdAt);
     const card: SkillPreferenceCard = {
       id: randomUUID(),

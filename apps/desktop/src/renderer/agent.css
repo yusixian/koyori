@@ -376,6 +376,21 @@
   margin-top: 12px;
 }
 
+.agent-preference-current {
+  margin-top: 12px;
+  border: 1px solid #d8e7df;
+  border-radius: 9px;
+  padding: 10px 12px;
+  background: #fff;
+}
+
+.agent-preference-current p {
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 .agent-preference-preview {
   margin-top: 13px;
   border: 1px solid #d8e7df;
