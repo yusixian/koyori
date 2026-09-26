@@ -5,6 +5,7 @@ export interface ResourceRoot {
   client: ClientId;
   path: string;
   label: string;
+  scope?: "user" | "project" | "system";
 }
 
 export type ScanIssueCode =

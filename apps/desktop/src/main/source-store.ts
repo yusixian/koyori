@@ -37,7 +37,11 @@ function isRoot(value: unknown): value is ResourceRoot {
     nonEmptyString(value.id) &&
     (value.client === "claude-code" || value.client === "codex") &&
     absolutePath(value.path) &&
-    nonEmptyString(value.label)
+    nonEmptyString(value.label) &&
+    (value.scope === undefined ||
+      value.scope === "user" ||
+      value.scope === "project" ||
+      value.scope === "system")
   );
 }
 
@@ -57,6 +61,9 @@ function normalizedRoots(values: unknown): StoredResourceRoot[] {
     client: root.client,
     path: resolve(root.path),
     label: root.label,
+    ...(root.scope === "user" || root.scope === "project" || root.scope === "system"
+      ? { scope: root.scope }
+      : {}),
     ...("canonicalPath" in root && absolutePath(root.canonicalPath)
       ? { canonicalPath: resolve(root.canonicalPath) }
       : {}),
@@ -193,13 +200,12 @@ export function mergeDiscoveredRoots(
     if (existing) {
       // Keep the persisted ID and user label, but retain the canonical identity
       // so a symlinked automatic root remains deduplicated after restart.
-      if (rootCanonicalPath(existing) !== resolve(candidate.canonicalPath)) {
-        const index = roots.indexOf(existing);
-        roots[index] = { ...existing, canonicalPath: resolve(candidate.canonicalPath) };
-      } else if (existing.canonicalPath === undefined) {
-        const index = roots.indexOf(existing);
-        roots[index] = { ...existing, canonicalPath: resolve(candidate.canonicalPath) };
-      }
+      const index = roots.indexOf(existing);
+      roots[index] = {
+        ...existing,
+        canonicalPath: resolve(candidate.canonicalPath),
+        scope: candidate.scope,
+      };
       continue;
     }
     roots.push({
@@ -207,6 +213,7 @@ export function mergeDiscoveredRoots(
       client: candidate.client,
       path: resolve(candidate.path),
       label: candidate.label,
+      scope: candidate.scope,
       canonicalPath: resolve(candidate.canonicalPath),
     });
   }

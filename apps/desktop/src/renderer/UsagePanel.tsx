@@ -2,6 +2,7 @@ import type {
   HistoryCoverage,
   ResourceRoot,
   SkillInventory,
+  SkillPreference,
   SkillRecord,
   SkillUsage,
   UsageCounts,
@@ -31,6 +32,7 @@ interface UsagePanelProps {
   onChange: (view: UsageView) => void;
   evidenceFocus: { skillId: string; windowDays: 30 | 90 } | null;
   onEvidenceFocused: (focus: null) => void;
+  onOpenSkill: (skillId: string) => void;
 }
 
 type WindowDays = 30 | 90;
@@ -45,6 +47,7 @@ export function UsagePanel({
   onChange,
   evidenceFocus,
   onEvidenceFocused,
+  onOpenSkill,
 }: UsagePanelProps) {
   const [revision, setRevision] = useState(0);
   const [windowDays, setWindowDays] = useState<WindowDays>(30);
@@ -703,7 +706,12 @@ export function UsagePanel({
             {view.report.suggestions.length > 0 ? (
               <div className="usage-suggestions">
                 {view.report.suggestions.map((suggestion) => (
-                  <article key={suggestion.id}>
+                  <article
+                    key={suggestion.id}
+                    className={
+                      suggestion.kind === "identical-content" ? "usage-suggestion-comparison" : ""
+                    }
+                  >
                     <div className="usage-suggestion-title">
                       <span className="usage-suggestion-kind">
                         {suggestionKindLabel(suggestion.kind)}
@@ -711,13 +719,84 @@ export function UsagePanel({
                       <strong className="usage-suggestion-name">{suggestion.title}</strong>
                     </div>
                     <p>{suggestion.reason}</p>
-                    <ul>
-                      {suggestion.skillIds.map((skillId) => (
-                        <li key={skillId}>
-                          {inventoryById.get(skillId)?.name ?? "当前清单中已不存在的资源"}
-                        </li>
-                      ))}
-                    </ul>
+                    {suggestion.kind === "identical-content" ? (
+                      <div className="usage-candidate-grid">
+                        {suggestion.skillIds.map((skillId) => {
+                          const skill = inventoryById.get(skillId);
+                          const root = roots.find(
+                            (item) =>
+                              skill && item.id === skill.rootId && item.client === skill.client,
+                          );
+                          const available = Boolean(skill && root);
+                          return (
+                            <div className="usage-candidate" key={skillId}>
+                              <strong>{skill?.name ?? "来源已失效"}</strong>
+                              <span className="usage-candidate-source">
+                                {available ? root?.label : "来源未知"}
+                              </span>
+                              {available && skill && (
+                                <code className="usage-candidate-path">{skill.path}</code>
+                              )}
+                              <dl>
+                                <div>
+                                  <dt>客户端 / 作用域</dt>
+                                  <dd>
+                                    {available && skill && root
+                                      ? `${clientNames[skill.client]} / ${scopeLabel(root.scope)}`
+                                      : "未知"}
+                                  </dd>
+                                </div>
+                                <div>
+                                  <dt>证据覆盖</dt>
+                                  <dd>
+                                    {available && usageBySkillId.has(skillId) ? (
+                                      <UsageStatus usage={usageBySkillId.get(skillId)} />
+                                    ) : (
+                                      <span>未知 · 暂无账本项</span>
+                                    )}
+                                    <span className="usage-candidate-coverage">
+                                      {available && skill ? coverageLabel(skill, view) : "未知"}
+                                    </span>
+                                  </dd>
+                                </div>
+                                <div>
+                                  <dt>保留 / 复查</dt>
+                                  <dd>
+                                    {available
+                                      ? preferenceLabel(view.preferences[skillId])
+                                      : "未知"}
+                                  </dd>
+                                </div>
+                                <div>
+                                  <dt>共享链接</dt>
+                                  <dd>{available && skill ? linkLabel(skill) : "未知"}</dd>
+                                </div>
+                              </dl>
+                              {available && skill ? (
+                                <button
+                                  type="button"
+                                  className="usage-text-button"
+                                  aria-label={`查看 ${skill.name} 详情（${skill.path}）`}
+                                  onClick={() => onOpenSkill(skillId)}
+                                >
+                                  查看 {skill.name} 详情
+                                </button>
+                              ) : (
+                                <output>来源已失效，请重新扫描后核对。</output>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <ul>
+                        {suggestion.skillIds.map((skillId) => (
+                          <li key={skillId}>
+                            {inventoryById.get(skillId)?.name ?? "当前清单中已不存在的资源"}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                     {suggestion.cautions.map((caution) => (
                       <small key={caution}>{caution}</small>
                     ))}
@@ -927,6 +1006,55 @@ function emptyEvidenceMessage(skill: SkillRecord, view: UsageView): string {
     return "当前没有可核对的使用证据：关联历史来源无法读取，请检查覆盖提示。";
   }
   return "当前观察窗口没有采集到这项 Skill 的使用证据。";
+}
+
+function scopeLabel(scope: ResourceRoot["scope"]): string {
+  if (scope === "user") return "用户级";
+  if (scope === "project") return "项目级";
+  if (scope === "system") return "系统级";
+  return "未知";
+}
+
+function coverageLabel(skill: SkillRecord, view: UsageView): string {
+  if (skill.client === "codex") return "未知 · 暂不采集调用记录";
+  const sources = view.sources.filter(
+    (source) =>
+      source.enabled && (source.rootId === skill.rootId || source.rootIds?.includes(skill.rootId)),
+  );
+  if (sources.length === 0) return "未知 · 未连接历史来源";
+  const coverage = view.coverage.filter((entry) =>
+    sources.some((source) => source.id === entry.sourceId),
+  );
+  if (coverage.length === 0) return "未知 · 尚未读取";
+  if (coverage.some((entry) => entry.status === "unreadable" || entry.status === "unsupported")) {
+    return "未知 · 来源无法读取";
+  }
+  if (coverage.some((entry) => entry.readLimited)) return "部分覆盖 · 读取受限";
+  const dates = coverage.flatMap((entry) =>
+    entry.firstRecordAt && entry.lastRecordAt
+      ? [{ first: entry.firstRecordAt, last: entry.lastRecordAt }]
+      : [],
+  );
+  if (dates.length === 0) return "未知 · 没有可核对的记录范围";
+  const first = dates.map((entry) => entry.first).sort()[0];
+  const last = dates
+    .map((entry) => entry.last)
+    .sort()
+    .at(-1);
+  return `${formatDate(first ?? null)}–${formatDate(last ?? null)} · 日期不代表完整覆盖`;
+}
+
+function preferenceLabel(preference: SkillPreference | undefined): string {
+  if (!preference) return "未知 · 尚无偏好记录";
+  const keep = preference.keep ? "始终保留" : "未设置保留";
+  return preference.reviewAfter
+    ? `${keep} · ${formatDate(preference.reviewAfter)} 复查`
+    : `${keep} · 未设置复查`;
+}
+
+function linkLabel(skill: SkillRecord): string {
+  if (!skill.isSymlink) return "非链接 · 本组候选为不同实际文件";
+  return skill.realPath ? "链接 · 与本组其他候选指向不同实际文件" : "链接 · 实际目标未知";
 }
 
 function EvidenceList({

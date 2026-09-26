@@ -243,6 +243,20 @@ function App() {
     navigate("skills");
     return null;
   }
+  function openSuggestedSkill(skillId: string) {
+    const skill = inventory?.skills.find((entry) => entry.id === skillId);
+    if (!skill || !roots.some((root) => root.id === skill.rootId && root.client === skill.client)) {
+      setError("所选 Skill 来源已不可用。请重新扫描后核对。");
+      return;
+    }
+    setExample(false);
+    setQuery("");
+    setFilter("all");
+    setListLimit(inventory?.skills.length ?? 20);
+    selectSkill(skillId);
+    showSkillView("inventory");
+    navigate("skills");
+  }
   async function scan() {
     setBusy(true);
     setError("");
@@ -916,6 +930,7 @@ function App() {
                   onChange={setUsage}
                   evidenceFocus={evidenceFocus}
                   onEvidenceFocused={setEvidenceFocus}
+                  onOpenSkill={openSuggestedSkill}
                 />
               </div>
             )}
