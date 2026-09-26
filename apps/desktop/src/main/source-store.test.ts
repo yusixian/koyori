@@ -101,8 +101,27 @@ describe("source settings persistence", () => {
     ]);
 
     expect(merged.roots).toEqual([
-      { ...existing, canonicalPath: "/tmp/shared" },
-      { ...root("new-id", "/tmp/claude", "claude-code"), canonicalPath: "/tmp/claude" },
+      { ...existing, canonicalPath: "/tmp/shared", scope: "user" },
+      {
+        ...root("new-id", "/tmp/claude", "claude-code"),
+        canonicalPath: "/tmp/claude",
+        scope: "user",
+      },
+    ]);
+  });
+
+  it("persists detected scope while leaving manually added scope unknown", async () => {
+    const path = await settingsPath();
+    const settings = mergeDiscoveredRoots(
+      { ...emptySourceSettings(), roots: [root("manual", "/tmp/custom")] },
+      [{ ...discovered("project", "/tmp/project-skills"), scope: "project" }],
+    );
+
+    await writeSourceSettings(path, settings);
+
+    expect((await readSourceSettings(path)).roots).toEqual([
+      root("manual", "/tmp/custom"),
+      expect.objectContaining({ id: "project", scope: "project" }),
     ]);
   });
 
@@ -131,5 +150,11 @@ describe("source settings persistence", () => {
       }),
     ).toThrow();
     expect(() => parseSourceSettings({ version: 2, roots: [], ignoredPaths: [] })).toThrow();
+    expect(() =>
+      parseSourceSettings({
+        ...emptySourceSettings(),
+        roots: [{ ...root("invalid", "/tmp/invalid"), scope: "private" }],
+      }),
+    ).toThrow();
   });
 });

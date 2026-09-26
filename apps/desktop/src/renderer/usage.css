@@ -862,6 +862,10 @@
   background: linear-gradient(145deg, #fff, #fcf6f8);
 }
 
+.usage-suggestion-comparison {
+  grid-column: 1 / -1;
+}
+
 .usage-suggestion-title {
   display: flex;
   align-items: center;
@@ -911,6 +915,79 @@
 .usage-suggestions small {
   display: block;
   color: #a26c80;
+}
+
+.usage-candidate-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.usage-suggestions .usage-candidate {
+  min-width: 0;
+  padding: 11px;
+  border: 1px solid #eadde2;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.usage-candidate > strong {
+  display: block;
+  overflow-wrap: anywhere;
+  color: #6d5861;
+  font-size: 13px;
+}
+
+.usage-candidate-source {
+  display: block;
+  margin-top: 2px;
+  color: #927b85;
+  font-size: 11px;
+}
+
+.usage-candidate-path {
+  display: block;
+  margin-top: 3px;
+  color: #8b7880;
+  font-size: 10px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.usage-candidate dl {
+  display: grid;
+  gap: 7px;
+  margin: 9px 0;
+}
+
+.usage-candidate dt {
+  color: #a28b95;
+  font-size: 11px;
+}
+
+.usage-candidate dd {
+  margin: 1px 0 0;
+  color: #695860;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.usage-candidate dd .usage-status {
+  display: inline-block;
+  margin-right: 6px;
+}
+
+.usage-candidate-coverage {
+  display: block;
+  margin-top: 3px;
+}
+
+.usage-candidate .usage-text-button {
+  padding: 0;
+  color: var(--usage-deep-rose);
+  font-size: 12px;
 }
 
 .usage-settings {
@@ -1004,6 +1081,12 @@
 
   .usage-rule-form {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .usage-candidate-grid {
+    grid-template-columns: 1fr;
   }
 }
 
