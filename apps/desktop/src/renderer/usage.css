@@ -745,6 +745,10 @@
   margin: 0;
 }
 
+.usage-evidence-target {
+  scroll-margin-top: 68px;
+}
+
 .usage-evidence {
   margin-top: 8px;
   padding: 12px;

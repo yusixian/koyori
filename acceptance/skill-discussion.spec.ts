@@ -86,6 +86,44 @@ test("skill discussion previews selected evidence and sends only the edited draf
     await expect(preview.locator("pre")).toContainText("未连接");
     await expect(preview.getByRole("button", { name: "加入当前草稿" })).toBeDisabled();
     expect(requests).toHaveLength(0);
+    await preview.getByRole("button", { name: "返回使用证据" }).focus();
+    await preview.getByRole("button", { name: "返回使用证据" }).press("Enter");
+    const emptyEvidence = page.getByRole("region", { name: "discussion-writer 的使用证据" });
+    await expect(emptyEvidence).toContainText("当前没有可核对的使用证据");
+    await expect(emptyEvidence).toContainText("历史来源尚未连接");
+    await expect(page.locator(".usage-evidence-target")).toBeFocused();
+    await expect
+      .poll(async () =>
+        emptyEvidence.evaluate(
+          (element) =>
+            element.getBoundingClientRect().top -
+            (document.querySelector(".skill-views")?.getBoundingClientRect().bottom ?? 0),
+        ),
+      )
+      .toBeGreaterThan(0);
+    await emptyEvidence.screenshot({ path: "artifacts/desktop-discussion-no-evidence.png" });
+    await page
+      .locator(".usage-skill-row")
+      .filter({ hasText: "discussion-writer" })
+      .getByRole("button", { name: "证据 0" })
+      .click();
+    await expect(emptyEvidence).not.toBeVisible();
+    await page.getByRole("button", { name: "Agent", exact: true }).click();
+    await expect(preview).toBeVisible();
+    await rm(source, { recursive: true });
+    await page.getByRole("button", { name: "Skills", exact: true }).click();
+    await page.getByRole("button", { name: "资源清单", exact: true }).click();
+    await page.getByRole("button", { name: "扫描", exact: true }).click();
+    await expect(page.getByRole("button", { name: /discussion-writer/ })).toHaveCount(0);
+    await page.getByRole("button", { name: "Agent", exact: true }).click();
+    await preview.getByRole("button", { name: "返回使用证据" }).click();
+    await expect(preview.getByRole("status")).toContainText("来源已不可用");
+    await mkdir(source, { recursive: true });
+    await writeFile(join(source, "SKILL.md"), content);
+    await page.getByRole("button", { name: "Skills", exact: true }).click();
+    await page.getByRole("button", { name: "扫描", exact: true }).click();
+    await expect(page.getByRole("button", { name: /discussion-writer/ })).toBeVisible();
+    await page.getByRole("button", { name: "Agent", exact: true }).click();
     await preview.getByRole("button", { name: "丢弃摘要" }).click();
     await expect(preview).not.toBeVisible();
     await page.locator(".agent-heading").getByRole("button", { name: "连接设置" }).click();
@@ -102,10 +140,15 @@ test("skill discussion previews selected evidence and sends only the edited draf
     await expect(
       page.locator(".usage-metric").filter({ hasText: "调用尝试" }).locator("strong"),
     ).toHaveText("1");
+    await page.locator(".usage-window").getByRole("button", { name: "90 天" }).click();
+    await expect(
+      page.locator(".usage-window").getByRole("button", { name: "90 天" }),
+    ).toHaveAttribute("aria-pressed", "true");
     const inventoryTab = page.getByRole("button", { name: "资源清单", exact: true });
     await inventoryTab.focus();
     await inventoryTab.press("Enter");
     await expect(inventoryTab).toHaveAttribute("aria-pressed", "true");
+    await page.getByRole("button", { name: /discussion-writer/ }).click();
     await expect(
       page.getByRole("heading", { name: "discussion-writer", exact: true }),
     ).toBeVisible();
@@ -114,9 +157,38 @@ test("skill discussion previews selected evidence and sends only the edited draf
     await expect(preview).toBeVisible();
     const snapshot = await preview.locator("pre").innerText();
     expect(snapshot).toContain("discussion-writer");
+    expect(snapshot).toContain("观察窗口：近 90 天");
     expect(snapshot).toMatch(/调用尝试[^\n]*1/);
     expect(requests).toHaveLength(0);
+    await preview.getByRole("button", { name: "返回使用证据" }).click();
+    const evidence = page.getByRole("region", { name: "discussion-writer 的使用证据" });
+    await expect(evidence).toBeVisible();
+    await expect(evidence).toBeInViewport();
+    await expect(
+      page.locator(".usage-window").getByRole("button", { name: "90 天" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator(".usage-evidence-target")).toBeFocused();
+    await expect
+      .poll(async () =>
+        evidence.evaluate(
+          (element) =>
+            element.getBoundingClientRect().top -
+            (document.querySelector(".skill-views")?.getBoundingClientRect().bottom ?? 0),
+        ),
+      )
+      .toBeGreaterThan(0);
+    await expect(evidence.locator("article")).toHaveCount(1);
+    await evidence.screenshot({ path: "artifacts/desktop-discussion-evidence.png" });
+    await page.screenshot({ path: "artifacts/desktop-discussion-evidence-page.png" });
+    const refreshUsage = page.locator(".usage-import-bar").getByRole("button", { name: "刷新" });
+    await refreshUsage.click();
+    await page.waitForTimeout(200);
+    await expect(evidence).not.toBeInViewport();
+    await page.getByRole("button", { name: "Agent", exact: true }).click();
+    await expect(preview.locator("pre")).toHaveText(snapshot);
+    await expect(page.getByLabel("消息", { exact: true })).toHaveValue("已有草稿：请先核对证据。");
     await page.getByRole("button", { name: "Skills", exact: true }).click();
+    await page.getByRole("button", { name: "资源清单", exact: true }).click();
     await expect(
       page.getByRole("heading", { name: "discussion-writer", exact: true }),
     ).toBeVisible();
