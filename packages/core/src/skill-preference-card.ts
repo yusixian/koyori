@@ -1,6 +1,6 @@
 import type { SkillPreference } from "./usage-types.ts";
 
-export type SkillPreferenceAction = "keep" | "review-later";
+export type SkillPreferenceAction = "keep" | "review-later" | "revoke";
 
 export interface SkillPreferenceCard {
   id: string;
@@ -18,6 +18,9 @@ export function preferenceAfterAction(
   current: SkillPreference | undefined,
   createdAt: string,
 ): SkillPreference {
+  if (action === "revoke") {
+    return { keep: false, reviewAfter: null, firstSeenAt: current?.firstSeenAt ?? createdAt };
+  }
   if (action === "keep") {
     return { keep: true, reviewAfter: null, firstSeenAt: current?.firstSeenAt ?? createdAt };
   }

@@ -478,6 +478,7 @@ function App() {
         </header>
         <div hidden={page !== "agent"}>
           <AgentPanel
+            active={page === "agent"}
             pendingDiscussion={pendingDiscussion}
             onDismissDiscussion={() => setPendingDiscussion(null)}
             onViewSkillEvidence={viewSkillEvidence}

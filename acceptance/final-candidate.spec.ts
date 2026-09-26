@@ -222,12 +222,22 @@ test("Skill preference card previews and confirms both local choices", async () 
     await expect(card).toContainText("确认后：未标记始终保留");
     await card.getByRole("button", { name: "确认保存偏好" }).click();
     await expect(card).toContainText("已保存“fixture-preference”的偏好。");
+    await expect(card).toContainText("当前状态：未标记始终保留 · 复查日期");
+    await expect(card).toContainText("来源：Koyori 本机使用账本");
+    await card.screenshot({ path: "artifacts/desktop-preference-after.png" });
     const review = await page.evaluate(
       async (id) => (await window.koyori.getUsage()).preferences[id],
       skillId ?? "",
     );
     expect(review?.keep).toBe(false);
     expect(review?.reviewAfter).toBeTruthy();
+    await card.getByRole("button", { name: "前往 Skills · 使用与建议" }).click();
+    await expect(page.getByRole("button", { name: "使用与建议", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await page.getByRole("button", { name: "Agent", exact: true }).click();
+    await expect(card).toContainText("当前状态：未标记始终保留 · 复查日期");
     await card.getByRole("button", { name: "始终保留" }).click();
     await expect(card).toContainText("确认后：始终保留 · 无复查日期");
     await card.getByRole("button", { name: "确认保存偏好" }).click();
@@ -237,6 +247,35 @@ test("Skill preference card previews and confirms both local choices", async () 
       skillId ?? "",
     );
     expect(kept).toMatchObject({ keep: true, reviewAfter: null });
+    await expect(card).toContainText("当前状态：始终保留");
+    await card.getByRole("button", { name: "前往 Skills · 使用与建议" }).click();
+    await page.getByRole("button", { name: "fixture-preference 30 天后复查" }).click();
+    await page.getByRole("button", { name: "Agent", exact: true }).click();
+    await expect(card).toContainText("当前状态：始终保留 · 复查日期");
+    const combined = await page.evaluate(
+      async (id) => (await window.koyori.getUsage()).preferences[id],
+      skillId ?? "",
+    );
+    expect(combined?.reviewAfter).toBeTruthy();
+    await card.getByRole("button", { name: "撤销明确偏好" }).click();
+    await expect(card).toContainText("确认后：未保存明确的保留或复查偏好");
+    await card.getByRole("button", { name: "取消", exact: true }).click();
+    expect(
+      await page.evaluate(
+        async (id) => (await window.koyori.getUsage()).preferences[id],
+        skillId ?? "",
+      ),
+    ).toEqual(combined);
+    await card.getByRole("button", { name: "撤销明确偏好" }).click();
+    await card.getByRole("button", { name: "确认撤销偏好" }).click();
+    await expect(card).toContainText("当前状态：未保存明确的保留或复查偏好");
+    await expect(card.getByRole("button", { name: "撤销明确偏好" })).toHaveCount(0);
+    const revoked = await page.evaluate(
+      async (id) => (await window.koyori.getUsage()).preferences[id],
+      skillId ?? "",
+    );
+    expect(revoked).toEqual({ keep: false, reviewAfter: null, firstSeenAt: combined?.firstSeenAt });
+    await card.screenshot({ path: "artifacts/desktop-preference-revoked.png" });
     expect(await readFile(join(source, "SKILL.md"), "utf8")).toBe(content);
   } finally {
     await app.close();
