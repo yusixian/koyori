@@ -2,6 +2,7 @@ import type {
   HistoryCoverage,
   ResourceRoot,
   SkillInventory,
+  SkillRecord,
   SkillUsage,
   UsageCounts,
   UsageEvent,
@@ -28,6 +29,8 @@ interface UsagePanelProps {
   inventory: SkillInventory | null;
   roots: ResourceRoot[];
   onChange: (view: UsageView) => void;
+  evidenceFocus: { skillId: string; windowDays: 30 | 90 } | null;
+  onEvidenceFocused: (focus: null) => void;
 }
 
 type WindowDays = 30 | 90;
@@ -36,7 +39,13 @@ type BusyAction = "load" | "source" | "import" | "preference" | "rules" | "revie
 const clientNames = { "claude-code": "Claude Code", codex: "Codex" } as const;
 const dayMs = 24 * 60 * 60 * 1000;
 
-export function UsagePanel({ inventory, roots, onChange }: UsagePanelProps) {
+export function UsagePanel({
+  inventory,
+  roots,
+  onChange,
+  evidenceFocus,
+  onEvidenceFocused,
+}: UsagePanelProps) {
   const [revision, setRevision] = useState(0);
   const [windowDays, setWindowDays] = useState<WindowDays>(30);
   const [view, setView] = useState<UsageView | null>(null);
@@ -45,6 +54,7 @@ export function UsagePanel({ inventory, roots, onChange }: UsagePanelProps) {
   const [sourceRootId, setSourceRootId] = useState("");
   const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
   const [showAllSkills, setShowAllSkills] = useState(false);
+  const evidenceRef = useRef<HTMLDivElement>(null);
   const [ruleDraft, setRuleDraft] = useState<Record<keyof UsageRules, string>>({
     idleDays: "",
     lowUseThreshold: "",
@@ -59,6 +69,13 @@ export function UsagePanel({ inventory, roots, onChange }: UsagePanelProps) {
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
+
+  useEffect(() => {
+    if (!evidenceFocus) return;
+    setWindowDays(evidenceFocus.windowDays);
+    setShowAllSkills(true);
+    setSelectedSkillId(evidenceFocus.skillId);
+  }, [evidenceFocus]);
 
   useEffect(() => {
     // Scanning or changing roots can change the main-process attribution context.
@@ -204,6 +221,23 @@ export function UsagePanel({ inventory, roots, onChange }: UsagePanelProps) {
       setBusy(null);
     }
   }
+
+  useEffect(() => {
+    if (
+      !evidenceFocus ||
+      selectedSkillId !== evidenceFocus.skillId ||
+      view?.report.windowDays !== evidenceFocus.windowDays ||
+      busy === "load"
+    )
+      return;
+    const frame = requestAnimationFrame(() => {
+      if (!evidenceRef.current) return;
+      evidenceRef.current.scrollIntoView({ block: "start" });
+      evidenceRef.current.focus({ preventScroll: true });
+      onEvidenceFocused(null);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [evidenceFocus, selectedSkillId, view?.report.windowDays, busy, onEvidenceFocused]);
 
   if (!inventory) {
     return (
@@ -584,7 +618,7 @@ export function UsagePanel({ inventory, roots, onChange }: UsagePanelProps) {
                       <button
                         type="button"
                         className="usage-text-button"
-                        disabled={!usage?.evidence.length}
+                        disabled={!usage?.evidence.length && selectedSkillId !== skill.id}
                         aria-expanded={selectedSkillId === skill.id}
                         onClick={() =>
                           setSelectedSkillId((current) => (current === skill.id ? null : skill.id))
@@ -615,8 +649,14 @@ export function UsagePanel({ inventory, roots, onChange }: UsagePanelProps) {
                 );
               })}
             </div>
-            {selectedSkill && selectedUsage && (
-              <EvidenceList skillName={selectedSkill.name} events={selectedUsage.evidence} />
+            {selectedSkill && (
+              <div ref={evidenceRef} className="usage-evidence-target" tabIndex={-1}>
+                <EvidenceList
+                  skillName={selectedSkill.name}
+                  events={selectedUsage?.evidence ?? []}
+                  emptyMessage={emptyEvidenceMessage(selectedSkill, view)}
+                />
+              </div>
             )}
           </section>
 
@@ -868,13 +908,43 @@ function Count({ label, value }: { label: string; value: number | undefined }) {
   );
 }
 
-function EvidenceList({ skillName, events }: { skillName: string; events: UsageEvent[] }) {
+function emptyEvidenceMessage(skill: SkillRecord, view: UsageView): string {
+  if (skill.client === "codex") {
+    return "当前没有可核对的使用证据：Codex 只参与资源盘点，暂不采集调用记录。";
+  }
+  const sources = view.sources.filter(
+    (source) => source.rootId === skill.rootId || source.rootIds?.includes(skill.rootId),
+  );
+  if (!sources.some((source) => source.enabled)) {
+    return "当前没有可核对的使用证据：这项 Skill 的历史来源尚未连接或已断开。";
+  }
+  const sourceIds = new Set(sources.map((source) => source.id));
+  const coverage = view.coverage.filter((entry) => sourceIds.has(entry.sourceId));
+  if (!view.lastImportedAt || coverage.length === 0) {
+    return "当前没有可核对的使用证据：历史来源已连接，但尚未导入记录。";
+  }
+  if (coverage.some((entry) => entry.status === "unreadable" || entry.status === "unsupported")) {
+    return "当前没有可核对的使用证据：关联历史来源无法读取，请检查覆盖提示。";
+  }
+  return "当前观察窗口没有采集到这项 Skill 的使用证据。";
+}
+
+function EvidenceList({
+  skillName,
+  events,
+  emptyMessage,
+}: {
+  skillName: string;
+  events: UsageEvent[];
+  emptyMessage: string;
+}) {
   return (
     <section className="usage-evidence" aria-label={`${skillName} 的使用证据`}>
       <div>
         <strong>{skillName}</strong>
         <span>仅显示相对文件、行号、时间与状态，不读取会话原文。</span>
       </div>
+      {events.length === 0 && <p>{emptyMessage}</p>}
       {events.map((event) => (
         <article key={event.id}>
           <span className={`evidence-status ${event.status}`}>{eventStatusLabel(event)}</span>

@@ -41,6 +41,7 @@ const agentMessageCharacterLimit = 65_536;
 interface AgentPanelProps {
   pendingDiscussion: SkillDiscussionDraft | null;
   onDismissDiscussion: () => void;
+  onViewSkillEvidence: (skillId: string, windowDays: 30 | 90) => string | null;
 }
 
 function formatTime(value: string) {
@@ -91,7 +92,11 @@ function latestUserText(messages: AgentMessage[], assistantId: string) {
   return "";
 }
 
-export function AgentPanel({ pendingDiscussion, onDismissDiscussion }: AgentPanelProps) {
+export function AgentPanel({
+  pendingDiscussion,
+  onDismissDiscussion,
+  onViewSkillEvidence,
+}: AgentPanelProps) {
   const [view, setView] = useState<AgentView | null>(null);
   const [busy, setBusy] = useState<BusyAction>(null);
   const [error, setError] = useState("");
@@ -747,6 +752,18 @@ export function AgentPanel({ pendingDiscussion, onDismissDiscussion }: AgentPane
             </p>
           )}
           <div className="agent-discussion-actions">
+            <button
+              type="button"
+              className="agent-text-button agent-evidence-button"
+              onClick={() =>
+                setDiscussionError(
+                  onViewSkillEvidence(pendingDiscussion.skillId, pendingDiscussion.windowDays) ??
+                    "",
+                )
+              }
+            >
+              返回使用证据
+            </button>
             <button
               type="button"
               className="agent-button agent-primary-button"

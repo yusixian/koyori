@@ -111,6 +111,10 @@ function App() {
   const [usage, setUsage] = useState<UsageView | null>(null);
   const [skillView, setSkillView] = useState<"inventory" | "usage" | "manage">("inventory");
   const [pendingDiscussion, setPendingDiscussion] = useState<SkillDiscussionDraft | null>(null);
+  const [evidenceFocus, setEvidenceFocus] = useState<{
+    skillId: string;
+    windowDays: 30 | 90;
+  } | null>(null);
   const [discussionBusyId, setDiscussionBusyId] = useState<string | null>(null);
   const [services, setServices] = useState<RegisteredService[]>([]);
   const [servicesLoading, setServicesLoading] = useState(false);
@@ -227,6 +231,17 @@ function App() {
     } finally {
       setDiscussionBusyId(null);
     }
+  }
+  function viewSkillEvidence(skillId: string, windowDays: 30 | 90): string | null {
+    const skill = inventory?.skills.find((entry) => entry.id === skillId);
+    if (!skill || !roots.some((root) => root.id === skill.rootId && root.client === skill.client)) {
+      return "所选 Skill 来源已不可用。请在 Skills 中重新扫描并选择后再核对证据。";
+    }
+    setExample(false);
+    setEvidenceFocus({ skillId, windowDays });
+    setSkillView("usage");
+    navigate("skills");
+    return null;
   }
   async function scan() {
     setBusy(true);
@@ -451,6 +466,7 @@ function App() {
           <AgentPanel
             pendingDiscussion={pendingDiscussion}
             onDismissDiscussion={() => setPendingDiscussion(null)}
+            onViewSkillEvidence={viewSkillEvidence}
           />
         </div>
         {page === "updates" && <UpdatePanel />}
@@ -894,7 +910,13 @@ function App() {
             {!example && (
               <div hidden={skillView !== "usage"}>
                 <CollectionPanel />
-                <UsagePanel inventory={inventory} roots={roots} onChange={setUsage} />
+                <UsagePanel
+                  inventory={inventory}
+                  roots={roots}
+                  onChange={setUsage}
+                  evidenceFocus={evidenceFocus}
+                  onEvidenceFocused={setEvidenceFocus}
+                />
               </div>
             )}
             {!example && (

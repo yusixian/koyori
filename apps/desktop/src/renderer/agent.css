@@ -494,6 +494,10 @@
   margin-top: 12px;
 }
 
+.agent-evidence-button {
+  margin-right: auto;
+}
+
 .agent-workspace {
   display: grid;
   grid-template-columns: minmax(210px, 255px) minmax(0, 1fr);
