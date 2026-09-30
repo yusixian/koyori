@@ -17,6 +17,8 @@ Koyori 是自用优先、从首版按开源方式建设的 AI Native 个人工�
 选中一项 Skill 后，可将使用证据与覆盖缺口生成摘要，预览并加入 Agent 草稿，再手动发送讨论。摘要不自动携带 Skill 正文、描述、路径或原始会话，已有草稿会保留。
 在摘要预览中可返回这项 Skill 的使用证据区核对原始记录；没有可核对的记录时会说明原因，不会发送摘要或清空草稿。
 
+**源码进度领先于公开安装包。** alpha.6 之后，main 已合入摘要返回使用证据、相同内容 Skill 对比、Agent 偏好查看与撤销，以及桌面开发端口调整；这些改动尚未进入新的公开 Preview。当前 CI、剩余验收和下一轮建议统一见[实施状态](docs/implementation-status.md)，不从源码合入推断安装包或线上指南已更新。
+
 ## macOS 首次打开
 
 从[下载页](https://koyori.cosine.ren/download/)获取 DMG，把 Koyori 拖入“应用程序”后打开。当前 Preview 尚未经过 Apple 公证。如果 macOS 提示“Koyori.app 已损坏，无法打开”（或 “Koyori.app is damaged and can't be opened”），先确认 DMG 来自本项目的 GitHub Release，并与下载页的 SHA-256 一致。退出 Koyori 后，在终端运行：

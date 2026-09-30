@@ -1,6 +1,10 @@
 # Skills 与个人 Agent 交付
 
-> 2026-09-22；Skills 交付切片已完成独立 review、合并及文档站部署，PR #1/#2 已合并；正式域名 DNS/HTTPS 已实测。自配模型 Agent 切片已完成 review、CI 和 [PR #3](https://github.com/yusixian/koyori/pull/3) 合并；文字 Agent 指南已部署；本轮单 Skill 讨论指南随新切片交付。
+> 本文保留 2026-09-22 阶段的交付目标、当时的授权记录及恢复线索，不作为当前任务授权或执行入口。当前公开 Preview、main 进展、CI 与剩余验收以[实施状态](implementation-status.md)为准；下一轮建议见[路线图](roadmap.md#下一轮建议)。
+
+## 历史记录适用范围
+
+截至 2026-09-30，公开 Preview 已为 alpha.6，采用 Apple Development 签名且未公证；下文的 alpha.1 准备、尚未公开发行、未签名候选及待合并描述均是历史状态。下文旧 CI 和部署记录只证明各自的提交，不代表当前安装包、升级或真实 Git 账号验收通过。保留原记录供追溯，不据此重复执行旧部署或扩展新任务权限。
 
 ## 目标与授权
 
